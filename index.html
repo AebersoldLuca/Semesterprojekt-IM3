@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sechs Flüsse, sechs Temperamente – Wasserstand und Wassertemperatur im Jahreslauf</title>
+  <meta name="description" content="Eine DataStory mit Messdaten des BAFU: Wie unterscheiden sich Wasserstand und Wassertemperatur von Aare, Limmat, Rhône, Thur, Ticino und Rhein im Jahresverlauf?">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 20c4-4 8-4 12 0s8 4 12 0 4-2 4-2' fill='none' stroke='%232a78d6' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M2 12c4-4 8-4 12 0s8 4 12 0 4-2 4-2' fill='none' stroke='%23eb6834' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#vergleich">Zur interaktiven Grafik springen</a>
+
+<!-- =============================================================
+     1) EINSTIEG
+     ============================================================= -->
+<header class="hero">
+  <div class="hero__inner">
+    <p class="kicker">DataStory · Hydrologie Schweiz</p>
+    <h1 class="hero__title">Sechs Flüsse,<br>sechs Temperamente</h1>
+    <p class="hero__lede">
+      Flüsse sind nicht einfach «kalt» oder «warm». Ob ein Fluss im Hochsommer zum Baden einlädt
+      oder eiskalt bleibt, ob er im Juni anschwillt oder im Winter – das verrät viel darüber,
+      woher sein Wasser kommt.
+    </p>
+
+    <div class="hero__stat" aria-live="polite">
+      <div class="stat">
+        <span class="stat__value" data-slot="hero-warm-value">–</span>
+        <span class="stat__label" data-slot="hero-warm-label">wärmstes Tagesmittel</span>
+      </div>
+      <div class="stat stat--cold">
+        <span class="stat__value" data-slot="hero-cold-value">–</span>
+        <span class="stat__label" data-slot="hero-cold-label">höchstes Tagesmittel am kältesten Fluss</span>
+      </div>
+    </div>
+
+    <div class="question">
+      <p class="question__label">Die Leitfrage</p>
+      <p class="question__text">
+        Wie unterscheiden sich Wasserstand und Wassertemperatur von sechs Schweizer Flüssen
+        im Jahresverlauf – und was verraten diese Unterschiede über Gletscher, Seen und Regen?
+      </p>
+    </div>
+    <p class="hero__source">Daten: Bundesamt für Umwelt BAFU, Tagesmittel <span data-slot="range-text">seit 2020</span></p>
+  </div>
+</header>
+
+<main>
+
+<!-- =============================================================
+     2) KONTEXT
+     ============================================================= -->
+<section class="section" id="kontext" aria-labelledby="kontext-title">
+  <div class="prose">
+    <p class="kicker">Kontext</p>
+    <h2 id="kontext-title">Was gemessen wird</h2>
+    <p>
+      Das Bundesamt für Umwelt (BAFU) betreibt das nationale hydrologische Messnetz. An rund
+      250 aktiven Stationen werden Abfluss, Wasserstand und – an einem Teil davon – die
+      Wassertemperatur automatisch erfasst. Diese DataStory verwendet die <strong>Tagesmittel</strong>
+      von sechs Stationen.
+    </p>
+  </div>
+
+  <div class="cards cards--3">
+    <article class="card">
+      <h3>Wasserstand</h3>
+      <p>
+        Die Höhe der Wasseroberfläche, beim BAFU in <strong>Metern über Meer</strong>. Ein Pegel in
+        Brienzwiler liegt auf rund 570&nbsp;m, einer im Tessin auf knapp 200&nbsp;m. Absolute Höhen
+        lassen sich deshalb nicht vergleichen – wir zeigen, wie weit ein Fluss
+        <strong>über oder unter seinem eigenen mittleren Pegel</strong> steht (in cm).
+      </p>
+    </article>
+    <article class="card">
+      <h3>Wassertemperatur</h3>
+      <p>
+        Die Temperatur des Wassers in <strong>°C</strong>. Sie ist wichtig für Fische und andere
+        Lebewesen, weil warmes Wasser weniger Sauerstoff lösen kann – und sie zeigt, ob ein Fluss
+        eher von Schmelzwasser oder von aufgewärmtem Seewasser gespeist wird.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Was die Unterschiede erklärt</h3>
+      <p>
+        Höhenlage, Gletscher und Schneeschmelze, Seen als Wärmespeicher, Regen, Lufttemperatur
+        und die Regulierung durch Wehre und Kraftwerke. Welche Faktoren wo wirken, beschreibt
+        diese Story vorsichtig – die Daten zeigen <em>Muster</em>, keine Ursachen.
+      </p>
+    </article>
+  </div>
+
+  <div class="prose">
+    <h3 class="subhead">Die sechs Messstationen</h3>
+    <p>Ausgewählt wurden Flüsse, die unterschiedliche Landschaften der Schweiz vertreten.</p>
+  </div>
+  <ul class="station-list" id="station-list" aria-live="polite">
+    <li class="station-list__placeholder">Stationen werden geladen …</li>
+  </ul>
+</section>
+
+<!-- =============================================================
+     3) VERGLEICH + ZEITVERLAUF (interaktive Hauptgrafik)
+     ============================================================= -->
+<section class="section section--wide" id="vergleich" aria-labelledby="vergleich-title">
+  <div class="prose">
+    <p class="kicker">Vergleich</p>
+    <h2 id="vergleich-title">Tag für Tag im Vergleich</h2>
+    <p>
+      Wähle Messgrösse, Zeitraum und Flüsse. Fahre mit der Maus oder dem Finger über die Grafik,
+      um die Werte eines Tages zu sehen.
+    </p>
+  </div>
+
+  <figure class="figure" id="ts-figure">
+    <div class="controls" role="group" aria-label="Einstellungen der Grafik">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
+      <div class="segmented segmented--range" role="radiogroup" aria-label="Zeitraum" id="range-switch">
+        <button type="button" role="radio" aria-checked="false" data-days="7">7&nbsp;T</button>
+        <button type="button" role="radio" aria-checked="false" data-days="30">30&nbsp;T</button>
+        <button type="button" role="radio" aria-checked="false" data-days="91">3&nbsp;M</button>
+        <button type="button" role="radio" aria-checked="true"  data-days="365">1&nbsp;J</button>
+        <button type="button" role="radio" aria-checked="false" data-days="1096">3&nbsp;J</button>
+        <button type="button" role="radio" aria-checked="false" data-days="all">Alle</button>
+      </div>
+    </div>
+
+    <div class="legend" id="ts-legend" role="group" aria-label="Flüsse ein- und ausblenden"></div>
+
+    <figcaption class="figure__title">
+      <span id="ts-title">Wassertemperatur, Tagesmittel</span>
+      <span class="figure__unit" id="ts-unit">in °C</span>
+    </figcaption>
+
+    <div class="chart" id="ts-chart" tabindex="0"
+         aria-label="Liniendiagramm. Mit den Pfeiltasten links und rechts durch die Tage navigieren.">
+      <div class="chart__status" id="ts-status" hidden></div>
+    </div>
+
+    <p class="figure__note" id="ts-note"></p>
+
+    <details class="table-view">
+      <summary>Kennzahlen des gewählten Zeitraums als Tabelle</summary>
+      <div class="table-scroll"><table id="ts-table"></table></div>
+    </details>
+
+    <p class="figure__source">
+      Quelle: BAFU, Hydrologische Beobachtungen (Tagesmittel), eigene Datenbank.
+      Lücken in den Linien: kein gültiger Messwert.
+    </p>
+  </figure>
+</section>
+
+<!-- =============================================================
+     4) JAHRESGANG
+     ============================================================= -->
+<section class="section section--wide" id="jahresgang" aria-labelledby="jahresgang-title">
+  <div class="prose">
+    <p class="kicker">Im Jahreslauf</p>
+    <h2 id="jahresgang-title">Ein typisches Jahr</h2>
+    <p data-slot="season-intro">
+      Mittelt man alle vollständigen Jahre Monat für Monat, treten die Charaktere der Flüsse deutlich hervor.
+    </p>
+  </div>
+
+  <figure class="figure" id="season-figure">
+    <div class="controls">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse Jahresgang" id="season-param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
+    </div>
+    <div class="legend legend--static" id="season-legend" aria-hidden="true"></div>
+    <figcaption class="figure__title">
+      <span id="season-title">Monatsmittel der Wassertemperatur</span>
+      <span class="figure__unit" id="season-unit">in °C</span>
+    </figcaption>
+    <div class="chart chart--season" id="season-chart" tabindex="0"
+         aria-label="Liniendiagramm Jahresgang. Mit den Pfeiltasten durch die Monate navigieren.">
+      <div class="chart__status" id="season-status" hidden></div>
+    </div>
+    <p class="figure__note" id="season-note"></p>
+  </figure>
+
+  <div class="prose findings" id="season-findings" aria-live="polite"></div>
+</section>
+
+<!-- =============================================================
+     5) ERKENNTNISSE
+     ============================================================= -->
+<section class="section" id="erkenntnisse" aria-labelledby="erkenntnisse-title">
+  <div class="prose">
+    <p class="kicker">Erkenntnisse</p>
+    <h2 id="erkenntnisse-title">Was die Daten zeigen</h2>
+  </div>
+
+  <div class="insights" id="insights" aria-live="polite">
+    <p class="muted">Erkenntnisse werden aus der Datenbank berechnet …</p>
+  </div>
+
+  <!-- Badetage-Tabelle -->
+  <figure class="figure figure--narrow" id="heat-figure">
+    <figcaption class="figure__title">
+      <span>Tage mit einem Tagesmittel von mindestens 20&nbsp;°C</span>
+      <span class="figure__unit">Anzahl Tage pro Jahr</span>
+    </figcaption>
+    <div class="table-scroll"><table class="heat-table" id="heat-table"></table></div>
+    <p class="figure__note" id="heat-note"></p>
+  </figure>
+
+  <!-- Jahresvergleich -->
+  <div class="prose">
+    <h3 class="subhead" id="ytd-title">Wie aussergewöhnlich ist dieses Jahr?</h3>
+    <p data-slot="ytd-intro">
+      Jedes Jahr wird nur über denselben Zeitraum gemittelt – so lässt sich das laufende Jahr fair mit den Vorjahren vergleichen.
+    </p>
+  </div>
+  <figure class="figure figure--narrow" id="ytd-figure">
+    <div class="controls">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse Jahresvergleich" id="ytd-param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
+    </div>
+    <figcaption class="figure__title">
+      <span id="ytd-chart-title">Mittlere Wassertemperatur</span>
+      <span class="figure__unit" id="ytd-unit">in °C</span>
+    </figcaption>
+    <div class="chart chart--ytd" id="ytd-chart"></div>
+    <p class="figure__note" id="ytd-note"></p>
+  </figure>
+
+  <div class="prose limits">
+    <h3 class="subhead">Was die Daten nicht zeigen</h3>
+    <ul>
+      <li><strong>Keine Klimatrends.</strong> <span data-slot="limits-years">Knapp sieben Jahre</span> sind zu kurz, um langfristige Entwicklungen zu belegen. Einzelne warme oder trockene Jahre sind Wetter, nicht Klima.</li>
+      <li><strong>Keine Ursachen.</strong> Die Daten zeigen, <em>dass</em> sich Flüsse unterscheiden. Warum, lässt sich nur mit Zusatzwissen (Einzugsgebiet, Seen, Gletscher, Kraftwerke) erklären.</li>
+      <li><strong>Nicht alle Werte sind geprüft.</strong> <span data-slot="release-share">Ein Teil der jüngsten Werte</span> ist noch provisorisch oder ohne Freigabestatus und kann vom BAFU nachträglich korrigiert werden.</li>
+      <li><strong>Wasserstand ist lokal.</strong> Ein Pegel misst die Wasserhöhe an genau einer Stelle; wie viele Zentimeter «viel» sind, hängt vom Flussbett ab.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- =============================================================
+     6) METHODIK & TRANSPARENZ
+     ============================================================= -->
+<section class="section section--method" id="methodik" aria-labelledby="methodik-title">
+  <div class="prose">
+    <p class="kicker">Methodik &amp; Transparenz</p>
+    <h2 id="methodik-title">Woher die Zahlen kommen</h2>
+  </div>
+
+  <ol class="pipeline" aria-label="Datenfluss">
+    <li><strong>BAFU-API</strong><span>GraphQL, Tagesmittel</span></li>
+    <li><strong>Extract</strong><span>PHP ruft die API ab</span></li>
+    <li><strong>Transform</strong><span>prüfen, bereinigen</span></li>
+    <li><strong>Load</strong><span>eigene MySQL-Datenbank</span></li>
+    <li><strong>Unload</strong><span>unload.php → JSON</span></li>
+    <li><strong>DataStory</strong><span>script.js / D3</span></li>
+  </ol>
+
+  <dl class="facts" id="facts">
+    <div><dt>Datenquelle</dt><dd>Bundesamt für Umwelt BAFU</dd></div>
+    <div><dt>Datenplattform</dt><dd><a href="https://api.data-platform.cloud.bafu.admin.ch/" rel="noopener">api.data-platform.cloud.bafu.admin.ch</a></dd></div>
+    <div><dt>Datensatz</dt><dd><a href="https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations" rel="noopener">Hydrologische Beobachtungen</a></dd></div>
+    <div><dt>Aggregation</dt><dd data-slot="fact-aggregation">Tagesmittel (<code>data_1day_mean</code>)</dd></div>
+    <div><dt>Analysierter Zeitraum</dt><dd data-slot="fact-range">–</dd></div>
+    <div><dt>Messwerte in der Datenbank</dt><dd data-slot="fact-count">–</dd></div>
+    <div><dt>Zuletzt importiert</dt><dd data-slot="fact-import">–</dd></div>
+    <div><dt>Freigabestatus</dt><dd data-slot="fact-release">–</dd></div>
+    <div><dt>Lizenz</dt><dd>Freie Nutzung. Quellenangabe ist Pflicht (opendata.swiss).</dd></div>
+  </dl>
+
+  <div class="prose method-notes">
+    <h3 class="subhead">So wurden die Daten verarbeitet</h3>
+    <ul>
+      <li>Ein PHP-Script (<code>etl/load.php</code>) lädt die Daten täglich per Cronjob von der BAFU-API und speichert sie in einer eigenen MySQL-Datenbank. Diese Website liest über <code>unload.php</code> <strong>nur aus dieser Datenbank</strong> – fällt die BAFU-API aus, bleibt die Story mit den gespeicherten Daten verfügbar.</li>
+      <li>Das BAFU liefert Zeitstempel in UTC; ein Tagesmittel beginnt um 00:00 Uhr Schweizer Normalzeit (MEZ). Die Daten sind dem entsprechenden Kalendertag zugeordnet.</li>
+      <li>Werte werden nie geschätzt oder aufgefüllt. Unplausible Werte (ausserhalb physikalisch sinnvoller Grenzen, falsche Einheit) werden verworfen. Ungeprüfte Tagesmittel von exakt 0.00&nbsp;°C gelten als vermuteter Sensorausfall und werden nicht übernommen – <span data-slot="rejected-text">sie erscheinen als Lücke</span>.</li>
+      <li>Der Freigabestatus des BAFU wird mitgespeichert: <strong>1</strong> provisorisch, <strong>2</strong> validiert, <strong>3</strong> definitiv. Jüngere Werte ohne Status sind in der Regel noch nicht geprüft. Bei jedem Import werden die letzten 60 Tage neu geladen, damit Korrekturen des BAFU übernommen werden.</li>
+      <li>Der Wasserstand wird als Abweichung vom mittleren Pegel der jeweiligen Station über den gesamten gespeicherten Zeitraum dargestellt. Monatsmittel im Jahresgang stammen nur aus vollständigen Kalenderjahren.</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <p>
+    Studienprojekt im Modul «Interaktive Medien 3», Fachhochschule Graubünden (FHGR).
+    Daten: <a href="https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations" rel="noopener">BAFU – Hydrologische Beobachtungen</a>.
+  </p>
+</footer>
+
+<!-- Globaler Fehlerhinweis, falls die eigene API nicht erreichbar ist -->
+<div class="toast" id="toast" role="alert" hidden></div>
+
+<!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN – alle DATEN kommen aus unload.php. -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
+<script src="script.js" defer></script>
+</body>
+</html>

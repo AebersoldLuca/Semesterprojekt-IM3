@@ -1,0 +1,16 @@
+# ---------------------------------------------------------------
+# Schutz sensibler Dateien im Web-Root
+# ---------------------------------------------------------------
+
+# Versteckte Dateien (.git, .gitignore, …) nie ausliefern
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Zugangsdaten, DB-Verbindung und Doku nicht direkt abrufbar
+<FilesMatch "^(config\.php|config\.example\.php|db\.php|README\.md)$">
+    Require all denied
+</FilesMatch>
+
+# Versteckte Ordner (.git, .idea), falls versehentlich hochgeladen
+RedirectMatch 404 /\.(git|idea|vscode)(/|$)

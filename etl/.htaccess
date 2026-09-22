@@ -1,0 +1,7 @@
+# Das ETL-Verzeichnis ist nicht öffentlich.
+# Ausnahme: load.php, damit ein Cronjob per URL möglich ist – das Script
+# prüft dann selbst ein geheimes Token aus config.php.
+Require all denied
+<Files "load.php">
+    Require all granted
+</Files>

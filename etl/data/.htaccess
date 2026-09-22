@@ -1,0 +1,2 @@
+# Temporäre ETL-Dateien nie über das Web ausliefern
+Require all denied

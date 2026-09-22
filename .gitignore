@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------
+# Geheimnisse – NIEMALS committen
+# ---------------------------------------------------------------
+# Echte Zugangsdaten (Vorlage: config.example.php)
+config.php
+.env
+.env.*
+
+# IDE-Konfiguration (PhpStorm speichert hier u.a. FTP/SFTP-Deployment-Daten)
+.idea/
+.vscode/
+*.iml
+
+# Temporäre ETL-Dateien (z.B. Lock-Datei des laufenden Imports)
+etl/data/*
+!etl/data/.gitkeep
+!etl/data/.htaccess
+
+# Logs
+logs/*
+!logs/.htaccess
+
+# Datenbank-Dumps
+*.sql.gz
+dump*.sql
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
