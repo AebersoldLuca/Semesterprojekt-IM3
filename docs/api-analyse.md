@@ -78,6 +78,10 @@ query Observations($nos: [String!], $params: [String!], $from: AWSDateTime!, $to
   Mit einer Reserve von 8000 Zeilen pro Fenster ergibt das 666 Tage pro Request.
   → Erstimport 2020 bis heute: **4 Requests**, täglicher Import (60 Tage): **1 Request**.
 - Lehnt die API ein Fenster trotzdem ab, halbiert `extract.php` das Fenster automatisch.
+- **Achtung, im Test entdeckt:** Mit explizitem `limit: 10000` in der Abfrage lehnt die API zu grosse
+  Abfragen *nicht* ab, sondern schneidet stillschweigend bei 10 000 Zeilen ab. Die Messwert-Abfrage setzt
+  deshalb kein `limit`; zusätzlich gilt jede Antwort mit 10 000 Zeilen als «zu gross» und wird halbiert.
+- Die API blockt Anfragen ohne `User-Agent`-Header mit HTTP 403. `fetchJson()` sendet deshalb einen.
 - Ratenlimit: 500 Requests / 5 Minuten pro IP, Überschreitung → HTTP 403. Wir liegen bei 2–5 Requests pro Lauf;
   bei 403/429/5xx wird mit 2, 4, 8 Sekunden Wartezeit wiederholt.
 

@@ -32,6 +32,9 @@ als Vergleichsgruppe.
 
 - **10 000-Zeilen-Limit ohne Pagination:** Die BAFU-API lehnt grössere Abfragen ab. Gelöst mit berechneten
   Zeitfenstern und automatischer Halbierung, falls ein Fenster trotzdem zu gross ist.
+- **Stilles Abschneiden:** Mit `limit: 10000` in der Abfrage kürzt die API zu grosse Antworten ohne Fehlermeldung.
+  Entdeckt erst durch gezieltes Testen; jetzt ohne `limit` und mit Zusatzprüfung gelöst. Ausserdem blockt die API
+  Anfragen ohne User-Agent mit HTTP 403 – im Unterrichtsbeispiel für die Sensorbox war das nicht nötig.
 - **Wasserstand in Metern über Meer:** Absolute Pegel (z.B. 570 m ü.M. in Brienzwiler, 198 m ü.M. am Ticino)
   sind nicht vergleichbar. Lösung: Abweichung vom mittleren Pegel jeder Station in Zentimetern.
 - **Unklarer Freigabestatus:** Die API liefert neben 1/2/3 oft `null`. Dieser Wert wird als «ohne Status»

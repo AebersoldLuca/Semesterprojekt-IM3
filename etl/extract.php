@@ -61,63 +61,85 @@ function selected_stations(): array
     return $stations;
 }
 
-/** Exception für alle Fehler beim Abruf der BAFU-API. */
+/**
+ * Exception für alle Fehler beim Abruf der BAFU-API.
+ * Der Code ist der HTTP-Status (0 = Netzwerkfehler, -1 = kein gültiges JSON).
+ */
 class BafuApiException extends RuntimeException
 {
 }
 
 /**
+ * Holt eine URL und gibt die JSON-Antwort als PHP-Array zurück.
+ *
+ * Aufgebaut wie der Helfer «fetchJson» aus dem Unterricht (Code-Along 07:
+ * Daten aus einer Live-API holen). Drei Erweiterungen für unser Projekt:
+ *  - Die BAFU-API ist eine GraphQL-API. Sie erwartet die Abfrage per POST als
+ *    JSON – dafür gibt es den optionalen Parameter $postData.
+ *  - Die BAFU-API verlangt einen User-Agent, sonst antwortet sie mit HTTP 403.
+ *  - Fehler werden geprüft: Statt still null zurückzugeben, wirft die Funktion
+ *    eine BafuApiException, die load.php protokolliert.
+ */
+function fetchJson(string $url, ?array $postData = null): array
+{
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, BAFU_TIMEOUT); // grosse Zeitfenster brauchen länger als 10 s
+    // Die BAFU-API blockt Anfragen ohne User-Agent mit HTTP 403 – deshalb stellen wir uns vor.
+    curl_setopt($ch, CURLOPT_USERAGENT, 'FHGR-IM3-DataStory/1.0 (Studienprojekt)');
+
+    if ($postData !== null) {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    }
+
+    $response = curl_exec($ch);
+    $status   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    if ($response === false) {
+        throw new BafuApiException('Netzwerkfehler: ' . curl_error($ch), 0);
+    }
+    if ($status !== 200) {
+        throw new BafuApiException("HTTP $status von der BAFU-API", $status);
+    }
+
+    $data = json_decode($response, true);
+    if (!is_array($data)) {
+        throw new BafuApiException('Antwort der BAFU-API ist kein gültiges JSON', -1);
+    }
+    return $data;
+}
+
+/**
  * Sendet eine GraphQL-Abfrage an die BAFU-API und gibt das «data»-Objekt zurück.
- * Wiederholt bei Netzwerkfehlern und HTTP 403/429/5xx mit wachsender Wartezeit.
+ * Bei Netzwerkfehlern und HTTP 403/429/5xx (z.B. Ratenlimit) wird bis zu
+ * BAFU_RETRIES-mal wiederholt, mit wachsender Wartezeit (2, 4, 8 Sekunden).
  */
 function bafu_graphql(string $query, array $variables = []): array
 {
-    $payload   = json_encode(['query' => $query, 'variables' => (object) $variables]);
-    $lastError = '';
-
-    for ($attempt = 1; $attempt <= BAFU_RETRIES + 1; $attempt++) {
-        $ch = curl_init(BAFU_ENDPOINT);
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json'],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => BAFU_TIMEOUT,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_USERAGENT      => 'FHGR-IM3-DataStory/1.0 (Studienprojekt)',
-        ]);
-        $body      = curl_exec($ch);
-        $status    = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-
-        if ($body === false) {
-            $lastError = "Netzwerkfehler: $curlError";
-        } elseif ($status === 403 || $status === 429 || $status >= 500) {
-            $lastError = "HTTP $status von der BAFU-API";
-        } elseif ($status !== 200) {
-            throw new BafuApiException("HTTP $status von der BAFU-API");
-        } else {
-            $json = json_decode($body, true);
-            if (!is_array($json)) {
-                throw new BafuApiException('Antwort der BAFU-API ist kein gültiges JSON');
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            $data = fetchJson(BAFU_ENDPOINT, ['query' => $query, 'variables' => (object) $variables]);
+            break;
+        } catch (BafuApiException $e) {
+            $code = $e->getCode();
+            $retryable = $code === 0 || $code === 403 || $code === 429 || $code >= 500;
+            if (!$retryable || $attempt > BAFU_RETRIES) {
+                throw $e;
             }
-            if (!empty($json['errors'])) {
-                // GraphQL-Fehler, z.B. «Query returned more than 10000 rows»
-                $messages = array_map(fn($e) => $e['message'] ?? 'unbekannt', $json['errors']);
-                throw new BafuApiException('GraphQL-Fehler: ' . implode(' | ', $messages));
-            }
-            return $json['data'] ?? [];
-        }
-
-        // Wiederholbarer Fehler: kurz warten (2, 4, 8 s), dann nochmals
-        if ($attempt <= BAFU_RETRIES) {
             $wait = 2 ** $attempt;
-            log_message('warning', "$lastError – neuer Versuch in {$wait}s", 'etl');
+            log_message('warning', $e->getMessage() . " – neuer Versuch in {$wait}s", 'etl');
             sleep($wait);
         }
     }
 
-    throw new BafuApiException($lastError);
+    // GraphQL meldet Fehler im JSON (HTTP 200), z.B. «Query returned more than 10000 rows»
+    if (!empty($data['errors'])) {
+        $messages = array_map(fn($e) => $e['message'] ?? 'unbekannt', $data['errors']);
+        throw new BafuApiException('GraphQL-Fehler: ' . implode(' | ', $messages), 200);
+    }
+    return $data['data'] ?? [];
 }
 
 /**
@@ -158,7 +180,6 @@ function extract_observations(array $stationNos, DateTimeImmutable $from, DateTi
             parameterName: { _in: \$params }
             timestamp: { _gte: \$from, _lt: \$to }
           }
-          limit: 10000
         ) {
           parameterName unitSymbol timestamp value releaseState
           station { no }
@@ -173,7 +194,16 @@ function extract_observations(array $stationNos, DateTimeImmutable $from, DateTi
         'from'   => $from->format('Y-m-d\TH:i:s\Z'),
         'to'     => $to->format('Y-m-d\TH:i:s\Z'),
     ]);
-    return $data['water']['observations'][$aggregation] ?? [];
+    $rows = $data['water']['observations'][$aggregation] ?? [];
+
+    // Sicherheitsprüfung: Mit explizitem «limit» würde die API bei 10 000 Zeilen
+    // stillschweigend abschneiden. Wir setzen kein limit (dann lehnt die API zu
+    // grosse Abfragen ab) und behandeln trotzdem jede volle Antwort als «zu gross»,
+    // damit run_extract() das Fenster halbiert und keine Daten verloren gehen.
+    if (count($rows) >= 10000) {
+        throw new BafuApiException('Query returned more than 10000 rows (Sicherheitsprüfung)', 200);
+    }
+    return $rows;
 }
 
 /**
