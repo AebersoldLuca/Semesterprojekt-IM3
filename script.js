@@ -520,7 +520,8 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
   const fmtDay = locale.utcFormat('%-d. %B');
 
   attachCrosshair({
-    chart, g, innerW, innerH, margin: m, dockHint: false,
+    chart, g, innerW, innerH, margin: m,
+    dockable: false, // Werte immer als schwebendes Fenster im Vordergrund – nichts darunter verschiebt sich
     positions: days.map((d) => x(d)),
     render(i, hover) {
       const d = days[i];
@@ -533,7 +534,9 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
         el('span', { class: 'tooltip__key', style: `background:${key}` }),
         el('span', { class: 'tooltip__name' }, label),
         el('span', { class: 'tooltip__value' }, p ? f(p.value) : 'kein Wert'));
-      const diff = pr && pc ? pc.value - pr.value : null;
+      // Differenz aus den angezeigten (gerundeten) Werten – so lässt sie sich nachrechnen
+      const shown = (v) => (isW ? Math.round(v) : Math.round(v * 10) / 10);
+      const diff = pr && pc ? shown(pc.value) - shown(pr.value) : null;
       return el('div', {},
         el('div', { class: 'tooltip__date' }, `${s.station.river_name}, ${fmtDay(new Date(d))}`),
         row(String(YEARS.ref), 'var(--year-ref)', pr),
@@ -926,7 +929,7 @@ const DOCK_BELOW = 560; // unter dieser Grafikbreite: Werte-Panel unter der Graf
  * schwebender Tooltip die Linien verdecken – dort werden die Werte in einem
  * Panel direkt unter der Grafik angezeigt («dock»).
  */
-function getTooltip(chart, { dockable = false, dockHint = true } = {}) {
+function getTooltip(chart, { dockable = false } = {}) {
   let node = chart.querySelector('.tooltip');
   if (!node) {
     node = el('div', { class: 'tooltip', role: 'status', 'aria-live': 'polite' });
@@ -941,11 +944,7 @@ function getTooltip(chart, { dockable = false, dockHint = true } = {}) {
     }
   }
   const docked = () => dock && chart.clientWidth < DOCK_BELOW;
-  // Ohne Hinweistext (z.B. bei vielen kleinen Grafiken) bleibt das Panel versteckt, bis es gebraucht wird
-  const hint = () => {
-    if (dockHint) dock.replaceChildren(el('p', { class: 'tooltip-dock__hint' }, 'Tippe auf die Grafik oder wische seitwärts, um die Werte zu sehen.'));
-    else dock.hidden = true;
-  };
+  const hint = () => dock.replaceChildren(el('p', { class: 'tooltip-dock__hint' }, 'Tippe auf die Grafik oder wische seitwärts, um die Werte zu sehen.'));
   if (dock) {
     dock.hidden = !docked();
     if (!dock.childElementCount) hint();
@@ -954,7 +953,6 @@ function getTooltip(chart, { dockable = false, dockHint = true } = {}) {
   return {
     show(content, px, py) {
       if (docked()) {
-        dock.hidden = false;
         dock.replaceChildren(content);
         return;
       }
@@ -981,8 +979,12 @@ function getTooltip(chart, { dockable = false, dockHint = true } = {}) {
  * Crosshair: Eine vertikale Linie folgt Maus/Finger und rastet am nächsten
  * Datenpunkt ein. Tastatur: Pfeiltasten links/rechts, Esc schliesst.
  */
-function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, label, dockHint = true }) {
-  const tooltip = getTooltip(chart, { dockable: true, dockHint });
+/**
+ * dockable: Auf schmalen Bildschirmen dürfen die Werte in einem Panel unter der
+ * Grafik erscheinen (nur für die grosse Explorer-Grafik mit vielen Zeilen).
+ */
+function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, label, dockable = true }) {
+  const tooltip = getTooltip(chart, { dockable });
   const hover = g.append('g').style('display', 'none');
   const rule = hover.append('line').attr('class', 'crosshair').attr('y1', 0).attr('y2', innerH);
   const dots = hover.append('g');
