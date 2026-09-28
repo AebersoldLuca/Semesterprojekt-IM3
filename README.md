@@ -52,6 +52,7 @@ als Vergleichsgruppe.
   https://api.data-platform.cloud.bafu.admin.ch/ · GraphQL-Endpunkt https://data.bafu.admin.ch/api
 - **Lizenz der Daten:** «Freie Nutzung. Quellenangabe ist Pflicht.» (opendata.swiss)
 - **D3.js v7** für die Visualisierungen: https://d3js.org/
+- **Schriften** (Google Fonts): Schibsted Grotesk, Instrument Serif, JetBrains Mono – https://fonts.google.com/
 - **PHP-Handbuch, PDO:** https://www.php.net/manual/de/book.pdo.php
 - **MySQL-Referenz, `INSERT … ON DUPLICATE KEY UPDATE`:**
   https://dev.mysql.com/doc/refman/8.0/en/insert-on-duplicate.html

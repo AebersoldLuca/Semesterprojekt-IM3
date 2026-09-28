@@ -45,7 +45,7 @@ const BAFU_MAX_ROWS        = 8000;                // Reserve unter dem API-Limit
 const STATIONS = [
     '2019' => [
         'display_name' => 'Aare – Brienzwiler',
-        'story_role'   => 'Junge Aare im Berner Oberland, gespeist von Gletschern und Schneeschmelze – noch vor dem Brienzersee.',
+        'story_role'   => 'Die junge Aare im Berner Oberland, noch vor dem Brienzersee. Gespeist von Gletschern und Schneeschmelze.',
     ],
     '2243' => [
         'display_name' => 'Limmat – Baden',
@@ -53,7 +53,7 @@ const STATIONS = [
     ],
     '2009' => [
         'display_name' => 'Rhône – Porte du Scex',
-        'story_role'   => 'Die Rhône kurz vor dem Genfersee – sie sammelt das Wasser aus den Walliser Alpen.',
+        'story_role'   => 'Die Rhône kurz vor dem Genfersee, mit dem Wasser aus den Walliser Alpen.',
     ],
     '2044' => [
         'display_name' => 'Thur – Andelfingen',
@@ -65,7 +65,7 @@ const STATIONS = [
     ],
     '2091' => [
         'display_name' => 'Rhein – Rheinfelden',
-        'story_role'   => 'Der Rhein unterhalb der Aaremündung – er sammelt das Wasser eines grossen Teils der Nordschweiz.',
+        'story_role'   => 'Der Rhein unterhalb der Aaremündung. Hier fliesst das Wasser eines grossen Teils der Nordschweiz vorbei.',
     ],
 ];
 

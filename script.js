@@ -25,7 +25,7 @@
      7) Jahr gegen Jahr (Grafik je Fluss, Vergrössern/Vollbild)
      8) Urteil
      9) Explorer: Zeitverlauf aller Flüsse
-    10) Tooltip, Crosshair, Resize, Animationen
+    10) Tooltip, Crosshair, Resize, Lesefortschritt
    ================================================================== */
 
 'use strict';
@@ -48,14 +48,14 @@ const HERO_STATION = '2044';
 const STATIONS = [
   { no: '2243', group: 'mittelland', color: 2, role: 'Abfluss des Zürichsees: Das Wasser war zuvor im See, dessen Oberfläche sich im Sommer stark erwärmt.' },
   { no: '2044', group: 'mittelland', color: 4, role: 'Fluss aus der Ostschweiz ohne grossen See und ohne grosse Gletscher im Einzugsgebiet.' },
-  { no: '2091', group: 'mittelland', color: 6, role: 'Der Rhein unterhalb der Aaremündung – er sammelt das Wasser eines grossen Teils der Nordschweiz.' },
-  { no: '2019', group: 'alpen', color: 1, role: 'Junge Aare im Berner Oberland, gespeist von Gletschern und Schneeschmelze – noch vor dem Brienzersee.' },
-  { no: '2009', group: 'alpen', color: 3, role: 'Die Rhône kurz vor dem Genfersee – sie sammelt das Wasser aus den Walliser Alpen.' },
+  { no: '2091', group: 'mittelland', color: 6, role: 'Der Rhein unterhalb der Aaremündung. Hier fliesst das Wasser eines grossen Teils der Nordschweiz vorbei.' },
+  { no: '2019', group: 'alpen', color: 1, role: 'Die junge Aare im Berner Oberland, noch vor dem Brienzersee. Gespeist von Gletschern und Schneeschmelze.' },
+  { no: '2009', group: 'alpen', color: 3, role: 'Die Rhône kurz vor dem Genfersee, mit dem Wasser aus den Walliser Alpen.' },
   { no: '2068', group: 'alpen', color: 5, role: 'Alpensüdseite: der Ticino kurz vor dem Lago Maggiore.' },
 ];
 const GROUPS = [
-  { key: 'mittelland', title: 'Mittelland' },
-  { key: 'alpen', title: 'Alpen – zum Vergleich' },
+  { key: 'mittelland', title: 'Mittelland · These' },
+  { key: 'alpen', title: 'Alpen · Kontrollgruppe' },
 ];
 
 /** Feld des Datenvertrags je Messgrösse */
@@ -83,6 +83,8 @@ const fmtDateLong = locale.utcFormat('%-d. %B %Y');
 const fmtDateTooltip = locale.utcFormat('%a, %-d. %B %Y');
 const fmtDayMonth = locale.utcFormat('%-d. %B');
 const fmtIsoDate = d3.utcFormat('%Y-%m-%d');
+const fmtDotted = d3.utcFormat('%d.%m.%Y');
+const fmtDayShort = locale.utcFormat('%-d. %b');
 
 const nf = (digits) => new Intl.NumberFormat('de-CH', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const fmt1 = nf(1).format;
@@ -190,7 +192,6 @@ const state = {
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  setupReveal();
   setupProgress();
   setupSegmented('cmp-param-switch', 'param', (v) => setCompareOption('parameter', v));
   setupSegmented('cmp-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
@@ -338,7 +339,7 @@ function renderStripes() {
   setSlot('ramp-max', `${fmt0(hi)} °C`);
   const names = state.names.get(s.no);
   document.getElementById('stripes-caption').textContent =
-    `Wassertemperatur der ${names.river_name} in ${names.station_name} – jeder Streifen ist ein Tag. ${YEARS.cur}: bis ${cutoffLabel()}.`;
+    `Wassertemperatur der ${names.river_name} in ${names.station_name}. Ein Streifen pro Tag, ${YEARS.cur} bis ${cutoffLabel()}.`;
 
   const tooltip = getTooltip(figure);
   const rows = [[YEARS.ref, s.ref.records], [YEARS.cur, s.cur.records]].map(([year, recs]) => {
@@ -380,7 +381,7 @@ function renderStats() {
   const ml = inGroup('mittelland');
   if (!ml.length) { box.replaceChildren(el('p', { class: 'muted' }, 'Keine Vergleichsdaten.')); return; }
   const cutoff = cutoffLabel();
-  setSlot('stats-lead', `Die drei Mittelland-Flüsse, jeweils vom 1. Januar bis ${cutoff}: ${YEARS.cur} im Vergleich zum Hitzesommer ${YEARS.ref}.`);
+  setSlot('stats-lead', `Limmat, Thur und Rhein, jeweils vom 1. Januar bis ${cutoff}. Links ${YEARS.cur}, darunter der Wert von ${YEARS.ref}.`);
 
   // Pro Kennzahl der Fluss mit dem deutlichsten Unterschied – möglichst drei verschiedene Flüsse
   const used = new Set();
@@ -394,51 +395,23 @@ function renderStats() {
   const warmest = pick((s) => delta(s, 'wt_mean'));
   const lowest = pick((s) => -delta(s, 'w_mean'));
 
-  const tile = (s, value, format, label, ref) => {
-    const valueNode = el('span', { class: 'stat__value', 'data-count': String(value) }, format(value));
-    valueNode.countFormat = format;
-    return el('article', { class: 'stat', style: `--c:${colorOf(s.no)}` },
-      el('div', { class: 'stat__river' }, keySwatch(s.no), displayName(s.no)),
-      valueNode,
-      el('p', { class: 'stat__label' }, label),
-      el('p', { class: 'stat__ref' }, ref));
-  };
+  const tile = (s, number, unit, label, ref) => el('article', { class: 'stat' },
+    el('div', { class: 'stat__river' }, keySwatch(s.no), displayName(s.no)),
+    el('span', { class: 'stat__value' }, number, el('small', {}, unit)),
+    el('p', { class: 'stat__label' }, label),
+    el('p', { class: 'stat__ref' }, ref));
 
   box.replaceChildren(
-    tile(hot, hot.cur.summary.days_ge_25, (v) => `${fmt0(v)} Tage`,
+    tile(hot, fmt0(hot.cur.summary.days_ge_25), 'Tage',
       'mit einem Tagesmittel von 25 °C oder mehr',
-      [`${YEARS.ref} im selben Zeitraum: `, el('strong', {}, `${fmt0(hot.ref.summary.days_ge_25)} Tage`)]),
-    tile(warmest, delta(warmest, 'wt_mean'), (v) => `${fmtSigned(v, 1)} °C`,
-      `wärmer als ${YEARS.ref} – im Mittel über alle Tage`,
-      [`${YEARS.ref}: `, el('strong', {}, fmtTemp(warmest.ref.summary.wt_mean)), ` · ${YEARS.cur}: `, el('strong', {}, fmtTemp(warmest.cur.summary.wt_mean))]),
-    tile(lowest, delta(lowest, 'w_mean'), (v) => `${fmtSigned(v)} cm`,
-      `tieferer Wasserstand als ${YEARS.ref} – im Mittel`,
-      [`${YEARS.ref}: `, el('strong', {}, fmtCm(lowest.ref.summary.w_mean)), ` · ${YEARS.cur}: `, el('strong', {}, fmtCm(lowest.cur.summary.w_mean)), ' gegenüber dem mittleren Pegel']),
+      `${YEARS.ref} im selben Zeitraum: ${fmt0(hot.ref.summary.days_ge_25)} Tage`),
+    tile(warmest, fmtSigned(delta(warmest, 'wt_mean'), 1), '°C',
+      `wärmer als ${YEARS.ref}, im Mittel über alle Tage`,
+      `${fmtTemp(warmest.ref.summary.wt_mean)} → ${fmtTemp(warmest.cur.summary.wt_mean)}`),
+    tile(lowest, fmtSigned(delta(lowest, 'w_mean')), 'cm',
+      `tieferer Wasserstand als ${YEARS.ref}, im Mittel`,
+      `${fmtCm(lowest.ref.summary.w_mean)} → ${fmtCm(lowest.cur.summary.w_mean)} ggü. mittlerem Pegel`),
   );
-  observeCountUp(box);
-}
-
-/** Zahlen zählen hoch, sobald sie sichtbar werden */
-function observeCountUp(container) {
-  const nodes = [...container.querySelectorAll('[data-count]')];
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
-  nodes.forEach((n) => { n.textContent = n.countFormat(0); });
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      io.unobserve(entry.target);
-      const node = entry.target;
-      const target = Number(node.dataset.count);
-      const start = performance.now();
-      const step = (now) => {
-        const t = Math.min(1, (now - start) / 1400);
-        node.textContent = node.countFormat(t < 1 ? target * (1 - (1 - t) ** 3) : target);
-        if (t < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    });
-  }, { threshold: 0.6 });
-  nodes.forEach((n) => io.observe(n));
 }
 
 /* ---------- 6) Stationen ----------------------------------------- */
@@ -451,17 +424,18 @@ function renderStationGroups() {
       const n = state.names.get(s.no);
       const recent = state.recent.get(s.no) || [];
       const last = [...recent].reverse().find((r) => r.water_temperature_c != null || r.water_level_deviation_cm != null);
-      return el('li', { class: 'station', style: `--c:${colorOf(s.no)}` },
-        el('div', { class: 'station__river' }, n.river_name),
-        el('div', { class: 'station__site' }, `${n.station_name} · BAFU ${s.no}`),
+      return el('li', { class: 'station' },
+        el('div', {},
+          el('div', { class: 'station__name' }, keySwatch(s.no), el('span', { class: 'station__river' }, n.river_name)),
+          el('div', { class: 'station__site' }, `${n.station_name} · Nr. ${s.no}`)),
         el('p', { class: 'station__role' }, s.role),
         el('div', { class: 'station__spark', 'data-spark': s.no, 'aria-hidden': 'true' }),
-        el('p', { class: 'station__spark-legend' }, `Wassertemperatur ${YEARS.ref} (grau) und ${YEARS.cur} (farbig)`),
         el('div', { class: 'station__now' },
           el('span', {}, el('strong', {}, last?.water_temperature_c != null ? fmtTemp(last.water_temperature_c) : '–'), 'Wasser'),
-          el('span', {}, el('strong', {}, last?.water_level_deviation_cm != null ? fmtCm(last.water_level_deviation_cm) : '–'), 'vs. mittlerer Pegel'),
-          el('span', {}, el('strong', {}, last ? fmtDayMonth(parseDate(last.date)) : '–'), 'Tagesmittel')));
-    })))));
+          el('span', {}, el('strong', {}, last?.water_level_deviation_cm != null ? fmtCm(last.water_level_deviation_cm) : '–'), 'Pegel'),
+          el('span', {}, el('strong', {}, last ? fmtDayShort(parseDate(last.date)) : '–'), 'Stand')));
+    })))),
+    el('p', { class: 'note' }, `Linien: Wassertemperatur ${YEARS.ref} grau, ${YEARS.cur} farbig (7-Tage-Mittel). Werte rechts: letztes Tagesmittel.`));
   drawSparklines();
 }
 
@@ -547,8 +521,8 @@ function diffLegend() {
   return [
     el('span', {}, el('span', { class: 'swatch swatch--line', style: 'background:var(--year-ref)' }), String(YEARS.ref)),
     el('span', {}, el('span', { class: 'swatch swatch--line', style: 'background:var(--ink)' }), String(YEARS.cur)),
-    el('span', {}, el('span', { class: 'swatch', style: 'background:var(--warm);opacity:.75' }), isW ? `${YEARS.cur} tiefer` : `${YEARS.cur} wärmer`),
-    el('span', {}, el('span', { class: 'swatch', style: 'background:var(--cool);opacity:.75' }), isW ? `${YEARS.cur} höher` : `${YEARS.cur} kühler`),
+    el('span', {}, el('span', { class: 'swatch', style: 'background:var(--signal)' }), isW ? `${YEARS.cur} tiefer` : `${YEARS.cur} wärmer`),
+    el('span', {}, el('span', { class: 'swatch', style: 'background:var(--cool)' }), isW ? `${YEARS.cur} höher` : `${YEARS.cur} kühler`),
   ];
 }
 
@@ -564,7 +538,7 @@ function renderMultiples() {
   document.getElementById('cmp-unit').textContent = PARAM_INFO[parameter].axis;
   document.getElementById('cmp-legend').replaceChildren(...diffLegend());
   document.getElementById('cmp-note').textContent =
-    `Gestrichelte Linie: ${cutoff} – bis hierhin reichen die Daten von ${YEARS.cur}. Alle Grafiken haben dieselbe Skala.` +
+    `Die gepunktete Linie markiert den ${cutoff}, bis hierhin reichen die Daten von ${YEARS.cur}. Alle Grafiken haben dieselbe Skala.` +
     (smooth > 1 ? ' Das 7-Tage-Mittel glättet kurze Schwankungen; im Tooltip stehen die geglätteten Werte.' : '');
 
   const series = cmpSeries();
@@ -575,13 +549,12 @@ function renderMultiples() {
     el('div', { class: 'multiples__grid' }, series.filter((s) => s.info.group === group.key).map((s) => {
       const a = isW ? s.ref.summary.w_mean : s.ref.summary.wt_mean;
       const b = isW ? s.cur.summary.w_mean : s.cur.summary.wt_mean;
-      const zoomBtn = el('button', { type: 'button', class: 'zoom-open', 'aria-label': `${displayName(s.no)} vergrössern` },
-        el('span', { 'aria-hidden': 'true' }, '⤢'), ' Vergrössern');
+      const zoomBtn = el('button', { type: 'button', class: 'zoom-open', 'aria-label': `${displayName(s.no)} vergrössern` }, 'Gross ↗');
       zoomBtn.addEventListener('click', () => openZoom(s.no));
       return el('div', { class: 'multiple' },
         el('div', { class: 'multiple__head' }, el('p', { class: 'multiple__title' }, keySwatch(s.no), displayName(s.no)), zoomBtn),
         el('p', { class: 'multiple__sub' }, a != null && b != null
-          ? [`Mittel ${YEARS.ref} → ${YEARS.cur}: ${isW ? fmtSigned(a) : fmt1(a)} → `, el('strong', {}, f(b))] : 'keine Daten'),
+          ? [`Mittel ${isW ? fmtSigned(a) : fmt1(a)} → `, el('strong', {}, f(b))] : 'keine Daten'),
         el('div', { class: 'chart chart--multiple', tabindex: '0', 'data-station': s.no,
           'aria-label': `${displayName(s.no)}: ${PARAM_INFO[parameter].label} ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` }));
     })))));
@@ -678,7 +651,7 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
       return el('div', {},
         el('div', { class: 'tooltip__date' }, `${state.names.get(s.no).river_name}, ${fmtDayMonth(new Date(d))}`),
         row(String(YEARS.ref), 'var(--year-ref)', pr),
-        row(String(YEARS.cur), 'var(--ink)', pc),
+        row(String(YEARS.cur), 'var(--bg)', pc), // Tooltip ist hell → dunkler Schlüssel
         diff != null ? el('div', { class: 'tooltip__row' }, el('span', {}), el('span', { class: 'tooltip__name' }, 'Differenz'),
           el('span', { class: 'tooltip__value' }, isW ? fmtCm(diff) : `${fmtSigned(diff, 1)} °C`)) : null);
     },
@@ -752,7 +725,7 @@ function renderZoom() {
     ? [`Mittel 1. Januar bis ${cutoffLabel()}: ${YEARS.ref} ${f(a)} → ${YEARS.cur} `, el('strong', {}, f(b))] : []));
   document.getElementById('zoom-note').textContent =
     `${PARAM_INFO[parameter].axis}, ${smooth > 1 ? 'gleitendes 7-Tage-Mittel' : 'Tagesmittel'}. ` +
-    `Gestrichelte Linie: ${cutoffLabel()}. In dieser Ansicht ist die Skala an diesen Fluss angepasst.`;
+    `Gepunktete Linie: ${cutoffLabel()}. In dieser Ansicht ist die Skala an diesen Fluss angepasst.`;
 
   const [yMin, yMax] = seriesExtent([s]);
   drawMultiple(document.getElementById('zoom-chart'), s, { yMin, yMax, isW, f, large: true });
@@ -770,63 +743,55 @@ function renderVerdict() {
   const low = (s) => delta(s, 'w_mean') < 0;
   const both = ml.filter((s) => warm(s) && low(s)).length;
 
-  let status; let cls; let badge; let lead;
+  let word; let cls; let lead;
   if (both === ml.length) {
-    status = 'Bestätigt'; cls = ''; badge = '✓';
-    lead = `Alle drei Mittelland-Flüsse waren ${YEARS.cur} bis ${cutoff} im Mittel wärmer und hatten einen tieferen Wasserstand als im Hitzesommer ${YEARS.ref}.`;
+    word = 'Ja'; cls = 'is-yes';
+    lead = `Limmat, Thur und Rhein waren ${YEARS.cur} bis ${cutoff} im Mittel wärmer und lagen tiefer als im Hitzesommer ${YEARS.ref}.`;
   } else if (ml.some((s) => warm(s) || low(s))) {
-    status = 'Teilweise bestätigt'; cls = 'is-partial'; badge = '~';
-    lead = `${both} von ${ml.length} Mittelland-Flüssen waren ${YEARS.cur} sowohl wärmer als auch tiefer als ${YEARS.ref}.`;
+    word = 'Teilweise'; cls = 'is-partial';
+    lead = `${both} von ${ml.length} Mittelland-Flüssen waren ${YEARS.cur} wärmer und tiefer als ${YEARS.ref}.`;
   } else {
-    status = 'Nicht bestätigt'; cls = 'is-rejected'; badge = '✕';
+    word = 'Nein'; cls = 'is-no';
     lead = `Keiner der Mittelland-Flüsse war ${YEARS.cur} bis ${cutoff} wärmer und tiefer als ${YEARS.ref}.`;
   }
 
-  const mark = (ok) => el('span', { class: `mark mark--${ok ? 'yes' : 'no'}`, 'aria-hidden': 'true' }, ok ? '✓' : '–');
   const pct = (s) => (s.cur.summary.count ? `${fmt0((s.cur.summary.checked / s.cur.summary.count) * 100)} %` : '–');
-
-  const rivers = ml.map((s) => el('article', { class: 'river-check' },
-    el('div', { class: 'river-check__name' }, keySwatch(s.no), state.names.get(s.no).river_name),
-    el('div', { class: 'pill' }, el('span', { class: 'pill__label' }, mark(warm(s)), warm(s) ? `wärmer als ${YEARS.ref}` : 'nicht wärmer'),
-      el('strong', {}, `${fmtSigned(delta(s, 'wt_mean'), 1)} °C`)),
-    el('div', { class: 'pill' }, el('span', { class: 'pill__label' }, mark(low(s)), low(s) ? 'tieferer Pegel' : 'kein tieferer Pegel'),
-      el('strong', {}, fmtCm(delta(s, 'w_mean')))),
-    el('p', { class: 'muted', style: 'font-size:.8rem;margin:10px 0 0' }, `Vollständig geprüfte Tage ${YEARS.cur}: ${pct(s)}`)));
-
-  const cell = (ok, text) => el('td', {}, mark(ok), `${ok ? 'ja' : 'nein'} (${text})`);
-  const alps = al.length ? el('div', { class: 'verdict__alps' },
-    el('h3', {}, 'Alpen – zum Vergleich'),
-    el('div', { class: 'table-scroll' }, el('table', {},
-      el('thead', {}, el('tr', {},
-        el('th', { scope: 'col' }, 'Fluss'),
-        el('th', { scope: 'col' }, `Wärmer als ${YEARS.ref}?`),
-        el('th', { scope: 'col' }, `Tieferer Pegel als ${YEARS.ref}?`),
-        el('th', { scope: 'col' }, `Geprüfte Tage ${YEARS.cur}`))),
-      el('tbody', {}, al.map((s) => el('tr', {},
-        el('th', { scope: 'row' }, el('span', { class: 'key', style: `background:${colorOf(s.no)}` }), displayName(s.no)),
-        cell(warm(s), `${fmtSigned(delta(s, 'wt_mean'), 1)} °C`),
-        cell(low(s), fmtCm(delta(s, 'w_mean'))),
-        el('td', {}, pct(s)))))))) : null;
+  // Gefülltes Quadrat = erfüllt, leeres = nicht erfüllt; der Text daneben sagt dasselbe (nie nur Farbe)
+  const cell = (ok, yes, no, value) => el('td', {}, el('span', { class: 'cell' },
+    el('span', { class: `sq${ok ? ' is-yes' : ''}`, 'aria-hidden': 'true' }), el('b', {}, ok ? yes : no), el('small', {}, value)));
+  const row = (s, control) => el('tr', { class: control ? 'is-control' : '' },
+    el('th', { scope: 'row' }, keySwatch(s.no), displayName(s.no)),
+    cell(warm(s), 'wärmer', 'nicht wärmer', `${fmtSigned(delta(s, 'wt_mean'), 1)} °C`),
+    cell(low(s), 'tiefer', 'nicht tiefer', fmtCm(delta(s, 'w_mean'))),
+    el('td', {}, pct(s)));
 
   box.replaceChildren(
-    el('div', { class: `verdict__hero ${cls}` },
-      el('div', { class: 'verdict__badge', 'aria-hidden': 'true' }, badge),
-      el('div', {},
-        el('p', { class: 'verdict__status' }, status, el('sup', {}, '*')),
-        el('p', { class: 'verdict__lead' }, lead))),
-    el('div', { class: 'verdict__rivers' }, rivers),
-    alps,
+    el('div', { class: 'verdict__answer' },
+      el('span', { class: `verdict__word ${cls}` }, word, el('sup', {}, '*')),
+      el('p', { class: 'verdict__lead' }, lead)),
+    el('div', { class: 'table-scroll' }, el('table', { class: 'matrix' },
+      el('thead', {}, el('tr', {},
+        el('th', { scope: 'col' }, 'Fluss'),
+        el('th', { scope: 'col' }, `Temperatur vs. ${YEARS.ref}`),
+        el('th', { scope: 'col' }, `Pegel vs. ${YEARS.ref}`),
+        el('th', { scope: 'col' }, `Geprüfte Tage ${YEARS.cur}`))),
+      el('tbody', {},
+        el('tr', { class: 'group-row' }, el('th', { colspan: '4', scope: 'rowgroup' }, 'Mittelland · These')),
+        ml.map((s) => row(s, false)),
+        al.length ? el('tr', { class: 'group-row' }, el('th', { colspan: '4', scope: 'rowgroup' }, 'Alpen · Kontrollgruppe')) : null,
+        al.map((s) => row(s, true))))),
     el('p', { class: 'verdict__footnote' }, el('sup', {}, '* '),
-      `Mit Vorbehalt: Verglichen werden die Mittelwerte vom 1. Januar bis ${cutoff}. Ein grosser Teil der Werte von ${YEARS.cur} ist vom BAFU noch nicht geprüft, und das Jahr ist noch nicht zu Ende. `,
-      'Die Alpenflüsse gehören nicht zur Hypothese – sie zeigen, dass nicht jeder Fluss gleich auf einen heissen, trockenen Sommer reagiert.'));
+      `Verglichen werden die Mittelwerte vom 1. Januar bis ${cutoff}. Viele Werte von ${YEARS.cur} sind vom BAFU noch nicht geprüft, und das Jahr ist nicht vorbei. `,
+      'Die Alpenflüsse gehören nicht zur These. Sie zeigen, dass Schmelzwasser anders auf einen heissen Sommer reagiert.'));
 }
 
 /** Methodik: Angaben aus den geladenen Daten */
 function renderFacts() {
+  setSlot('data-stand', fmtDotted(parseDate(state.latest)));
   setSlot('fact-range', `1. Januar 2020 bis ${longDate(state.latest)}`);
   const checked = d3.sum(state.cmp.stations, (s) => s.cur.summary.checked);
   const total = d3.sum(state.cmp.stations, (s) => s.cur.summary.count);
-  if (total) setSlot('fact-checked', `${fmt0((checked / total) * 100)} % der Tage vollständig vom BAFU geprüft (Stand ${longDate(state.latest)})`);
+  if (total) setSlot('fact-checked', `${fmt0((checked / total) * 100)} % der Tage vollständig vom BAFU geprüft`);
 }
 
 /* ---------- 9) Explorer: Zeitverlauf aller Flüsse ----------------- */
@@ -1189,20 +1154,4 @@ function setupProgress() {
     if (!ticking) { ticking = true; requestAnimationFrame(update); }
   }, { passive: true });
   update();
-}
-
-/** Dezente Einblend-Animation beim Scrollen */
-function setupReveal() {
-  if (!('IntersectionObserver' in window)) return;
-  const targets = document.querySelectorAll('main .section__head, .stats, .cards, #station-groups, .figure, .verdict, .pipeline, .facts, .method-notes');
-  targets.forEach((t) => t.classList.add('reveal'));
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (e.isIntersecting) {
-        e.target.classList.add('is-visible');
-        io.unobserve(e.target);
-      }
-    });
-  }, { rootMargin: '0px 0px -8% 0px' });
-  targets.forEach((t) => io.observe(t));
 }
