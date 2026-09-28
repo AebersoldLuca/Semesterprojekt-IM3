@@ -410,7 +410,12 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .multiple:nth-child(odd) { border-left: 0; padding-left: 0; }
   .station { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 216px; }
   .station__role { grid-column: 1 / -1; order: 3; }
-  .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 24px; }
+  /* Datenfluss senkrecht: eine Linie links, ein Schritt pro Zeile */
+  .pipeline { grid-template-columns: minmax(0, 1fr); border-top: 0; border-left: 1px solid var(--ink); margin-left: 3px; }
+  .pipeline li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: baseline; gap: 8px; padding: 11px 0 11px 18px; border-bottom: 1px solid var(--rule); }
+  .pipeline li::before { margin: 0; }
+  .pipeline li::after { top: 50%; left: -4px; transform: translateY(-50%); }
+  .pipeline li span { font-size: 1rem; }
   .diff-legend { margin-left: 0; }
 }
 
@@ -426,7 +431,6 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .multiple, .multiple + .multiple { border-left: 0; padding-left: 0; padding-right: 0; }
   .station { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .station__role { order: 0; }
-  .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .toolbar { gap: 8px; }
   .segmented { width: 100%; }
   .segmented button { flex: 1 1 auto; }
