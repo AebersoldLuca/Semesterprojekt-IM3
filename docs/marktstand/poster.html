@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<title>Poster · Datenfluss · Heisser als der Hitzesommer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:wght@400..800&amp;display=swap">
+<style>
+  /* Druckformat A2 hochkant (420 × 594 mm). Skaliert sauber auf A1 oder A3. */
+  @page { size: 420mm 594mm; margin: 0; }
+  :root {
+    --paper: #f2f0e9; --ink: #111110; --ink-2: #55534d; --ink-3: #8b8880;
+    --rule: #cfccc2; --signal: #ff4d1c; --cool: #3a7bd5;
+    --sans: "Schibsted Grotesk", Helvetica, Arial, sans-serif;
+    --serif: "Instrument Serif", Georgia, serif;
+    --mono: "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { width: 420mm; height: 594mm; padding: 22mm 22mm 18mm; display: flex; flex-direction: column; overflow: hidden; }
+
+  .top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 4.2mm; text-transform: uppercase; letter-spacing: .04em; border-bottom: .5mm solid var(--ink); padding-bottom: 4mm; }
+  h1 { font-size: 39mm; line-height: .86; letter-spacing: -0.055em; font-weight: 700; margin: 14mm 0 0; }
+  h1 em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--signal); letter-spacing: -0.03em; }
+  .subtitle { display: flex; justify-content: space-between; align-items: flex-end; gap: 20mm; margin: 9mm 0 12mm; }
+  .subtitle p { font-family: var(--serif); font-size: 11mm; line-height: 1.12; margin: 0; max-width: 250mm; }
+  .qr { text-align: center; font-family: var(--mono); font-size: 3.3mm; color: var(--ink-2); flex: none; }
+  .qr svg { display: block; width: 40mm; height: 40mm; margin-bottom: 2mm; }
+
+  .body { flex: 1; display: grid; grid-template-columns: 1fr 112mm; gap: 14mm; min-height: 0; }
+
+  /* Datenfluss */
+  .flow { list-style: none; margin: 0; padding: 0 0 0 9mm; border-left: 1mm solid var(--ink); display: flex; flex-direction: column; justify-content: space-between; }
+  .step { position: relative; display: grid; grid-template-columns: 17mm 1fr 58mm; gap: 6mm; align-items: start; padding: 4.2mm 0; border-bottom: .3mm solid var(--rule); }
+  .step:last-child { border-bottom: 0; }
+  .step::before { content: ""; position: absolute; left: -12.2mm; top: 6mm; width: 5.4mm; height: 5.4mm; background: var(--ink); }
+  .step.is-db::before { background: var(--signal); width: 7mm; height: 7mm; left: -4mm; top: 9.4mm; }
+  .step.is-db { background: linear-gradient(90deg, rgba(255,77,28,.10), transparent 80%); margin-left: -9mm; padding-left: 9mm; }
+  .no { font-family: var(--mono); font-size: 5mm; color: var(--ink-3); padding-top: 1.6mm; }
+  .step h2 { font-size: 11mm; letter-spacing: -0.035em; line-height: 1; margin: 0 0 1.6mm; }
+  .file { font-family: var(--mono); font-size: 4.1mm; color: var(--signal); margin-bottom: 2.4mm; }
+  .step ul { margin: 0; padding: 0; list-style: none; font-size: 4.5mm; line-height: 1.35; color: var(--ink-2); }
+  .step li { padding-left: 4mm; position: relative; }
+  .step li::before { content: "–"; position: absolute; left: 0; }
+  .fig { text-align: right; }
+  .fig strong { display: block; font-size: 14mm; letter-spacing: -0.05em; line-height: .95; font-weight: 700; }
+  .fig span { font-family: var(--mono); font-size: 3.6mm; color: var(--ink-2); text-transform: uppercase; letter-spacing: .02em; }
+
+  /* Seitenspalte */
+  .side { display: flex; flex-direction: column; gap: 9mm; }
+  .box h3 { font-family: var(--mono); font-weight: 500; font-size: 4mm; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 3mm; padding-bottom: 2mm; border-bottom: .5mm solid var(--ink); }
+  .thesis { font-family: var(--serif); font-size: 8.6mm; line-height: 1.12; margin: 0; }
+  .verdict { display: flex; align-items: baseline; gap: 5mm; margin-top: 4mm; }
+  .verdict b { font-size: 20mm; letter-spacing: -0.06em; line-height: .9; }
+  .verdict b sup { color: var(--signal); font-size: .35em; }
+  .verdict span { font-size: 4.2mm; color: var(--ink-2); line-height: 1.3; }
+  pre { margin: 0; background: var(--ink); color: #ece9e2; font-family: var(--mono); font-size: 3.55mm; line-height: 1.5; padding: 4mm 4.5mm; white-space: pre; }
+  pre .k { color: #9fc3ff; } pre .s { color: #ffb08f; } pre .n { color: #ffffff; }
+  .caption { font-size: 3.7mm; color: var(--ink-2); margin: 2.4mm 0 0; line-height: 1.35; }
+
+  .tables { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+  .tbl { border: .4mm solid var(--ink); font-family: var(--mono); font-size: 3.3mm; }
+  .tbl b { display: block; background: var(--ink); color: var(--paper); padding: 1.4mm 2.2mm; font-weight: 500; font-size: 3.6mm; }
+  .tbl div { padding: 2mm 2.2mm; line-height: 1.45; color: var(--ink-2); }
+  .tbl.main { grid-column: 1 / -1; border-color: var(--signal); }
+  .tbl.main b { background: var(--signal); color: var(--ink); }
+  .key { color: var(--ink); font-weight: 500; }
+
+  .fallback { background: var(--ink); color: var(--paper); padding: 5mm; }
+  .fallback h3 { border-color: var(--paper); }
+  .fallback p { margin: 0; font-size: 4.6mm; line-height: 1.35; }
+
+  .foot { display: flex; justify-content: space-between; gap: 10mm; font-family: var(--mono); font-size: 3.5mm; color: var(--ink-2); border-top: .5mm solid var(--ink); padding-top: 4mm; margin-top: 10mm; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="top"><span>DataStory · Interaktive Medien 3 · FHGR</span><span>Hydrologie Schweiz · 2022 ↔ 2026</span></div>
+
+  <h1>Heisser als der <em>Hitzesommer</em></h1>
+  <div class="subtitle">
+    <p>Von der Messstation bis zur Grafik: So fliessen die Daten des Bundesamts für Umwelt durch unser Projekt.</p>
+    <div class="qr"><div id="qr"></div>im3.ixigamil.myhostpoint.ch</div>
+  </div>
+
+  <div class="body">
+    <ol class="flow">
+      <li class="step">
+        <span class="no">01</span>
+        <div>
+          <h2>BAFU-API</h2>
+          <div class="file">data.bafu.admin.ch/api · GraphQL</div>
+          <ul>
+            <li>Hydrologische Beobachtungen des Bundes, offene Daten</li>
+            <li>Tagesmittel <b>Wassertemperatur</b> und <b>Wasserstand</b></li>
+            <li>6 Messstationen: 3 im Mittelland, 3 in den Alpen</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>6</strong><span>Stationen, seit 2020</span></div>
+      </li>
+      <li class="step">
+        <span class="no">02</span>
+        <div>
+          <h2>Extract</h2>
+          <div class="file">etl/extract.php · fetchJson() mit cURL</div>
+          <ul>
+            <li>GraphQL-Abfrage per POST, jeden Tag per Cronjob</li>
+            <li>Max. 10 000 Zeilen pro Abfrage → Zeitfenster, bei Bedarf halbiert</li>
+            <li>Bei Ausfall: 3 Wiederholungen (2 · 4 · 8 s), dann Protokoll</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>2</strong><span>Requests pro Tag</span></div>
+      </li>
+      <li class="step">
+        <span class="no">03</span>
+        <div>
+          <h2>Transform</h2>
+          <div class="file">etl/transform.php</div>
+          <ul>
+            <li>Einheit prüfen (°C, m ü.M.), Werte auf Plausibilität</li>
+            <li>Zeitstempel UTC → Kalendertag in Schweizer Normalzeit</li>
+            <li>Nichts wird geschätzt: Sensorausfälle werden verworfen</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>3</strong><span>Werte verworfen</span></div>
+      </li>
+      <li class="step">
+        <span class="no">04</span>
+        <div>
+          <h2>Load</h2>
+          <div class="file">etl/load.php · PDO · Prepared Statements</div>
+          <ul>
+            <li>INSERT … ON DUPLICATE KEY UPDATE: neu, geändert oder gleich</li>
+            <li>Die letzten 60 Tage werden neu geladen: Das BAFU prüft nachträglich</li>
+            <li>Jeder Lauf wird in import_runs protokolliert</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>0</strong><span>Duplikate</span></div>
+      </li>
+      <li class="step is-db">
+        <span class="no">05</span>
+        <div>
+          <h2>MySQL-Datenbank</h2>
+          <div class="file">Hostpoint · eigene Datenbank · etl/schema.sql</div>
+          <ul>
+            <li>Die einzige Datenquelle für die Website</li>
+            <li>UNIQUE (Station, Messgrösse, Zeitpunkt) verhindert Doppelte</li>
+            <li>Fällt die BAFU-API aus, bleiben die Daten verfügbar</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>29 541</strong><span>Messwerte · 28.09.2026</span></div>
+      </li>
+      <li class="step">
+        <span class="no">06</span>
+        <div>
+          <h2>Unload</h2>
+          <div class="file">unload.php → JSON nach Datenvertrag v1</div>
+          <ul>
+            <li>Liest nur aus MySQL, nie aus der BAFU-API</li>
+            <li>Filter: stations · parameter · years · from · to</li>
+            <li>Wasserstand als Abweichung vom mittleren Pegel in cm</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>7</strong><span>Felder pro Datensatz</span></div>
+      </li>
+      <li class="step">
+        <span class="no">07</span>
+        <div>
+          <h2>DataStory</h2>
+          <div class="file">index.html · script.js (fetch + D3.js) · style.css</div>
+          <ul>
+            <li>Temperatur-Streifen, Kennzahlen, Jahr gegen Jahr, Urteil</li>
+            <li>Alle Zahlen im Text werden live aus den Daten berechnet</li>
+            <li>Desktop und Mobile, Tooltips, Vollbild, Filter</li>
+          </ul>
+        </div>
+        <div class="fig"><strong>2022</strong><span>vs. 2026</span></div>
+      </li>
+    </ol>
+
+    <aside class="side">
+      <div class="box">
+        <h3>Unsere These</h3>
+        <p class="thesis">2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.</p>
+        <div class="verdict"><b>Ja<sup>*</sup></b><span>Limmat, Thur und Rhein: wärmer und tiefer, jeweils 1.1.–27.9. <br>* viele Werte 2026 noch ungeprüft</span></div>
+      </div>
+
+      <div class="box">
+        <h3>Datenvertrag · ein Datensatz</h3>
+<pre>{
+  <span class="k">"station_no"</span>: <span class="s">"2044"</span>,
+  <span class="k">"river_name"</span>: <span class="s">"Thur"</span>,
+  <span class="k">"station_name"</span>: <span class="s">"Andelfingen"</span>,
+  <span class="k">"date"</span>: <span class="s">"2026-09-27"</span>,
+  <span class="k">"water_temperature_c"</span>: <span class="n">16.85</span>,
+  <span class="k">"water_level_deviation_cm"</span>: <span class="n">-60.6</span>,
+  <span class="k">"release_state"</span>: <span class="n">null</span>
+}</pre>
+        <p class="caption">Genau diese Form liefert unload.php. Das Frontend-Team konnte damit arbeiten, bevor das Backend fertig war.</p>
+      </div>
+
+      <div class="box">
+        <h3>Datenbank · 4 Tabellen</h3>
+        <div class="tables">
+          <div class="tbl main"><b>observations</b><div><span class="key">station_id · parameter_code · measured_at</span> (UNIQUE)<br>obs_date · value · release_state · import_run_id</div></div>
+          <div class="tbl"><b>stations</b><div><span class="key">station_no</span> (UNIQUE)<br>name · river_name · Koordinaten · sort_order</div></div>
+          <div class="tbl"><b>parameters</b><div><span class="key">code</span> W · WT<br>label · unit</div></div>
+          <div class="tbl" style="grid-column: 1 / -1"><b>import_runs</b><div>started_at · status · neu · geändert · verworfen</div></div>
+        </div>
+      </div>
+
+      <div class="box fallback">
+        <h3>Warum eine eigene Datenbank?</h3>
+        <p>Die Website hängt nie direkt an der BAFU-API. Ist die API offline, zeigt die Seite weiter die gespeicherten Daten, und der nächste Import holt alles nach.</p>
+      </div>
+    </aside>
+  </div>
+
+  <div class="foot">
+    <span>Daten: Bundesamt für Umwelt BAFU, Hydrologische Beobachtungen (opendata.swiss, Quellenangabe Pflicht)</span>
+    <span>github.com/AebersoldLuca/Semesterprojekt-IM3</span>
+  </div>
+</div>
+
+<!-- QR-Code zur Website (Bibliothek nur für das Poster) -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+  const qr = qrcode(0, 'M');
+  qr.addData('https://im3.ixigamil.myhostpoint.ch/');
+  qr.make();
+  document.getElementById('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+</script>
+</body>
+</html>

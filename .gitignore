@@ -27,3 +27,6 @@ dump*.sql
 # Betriebssystem
 .DS_Store
 Thumbs.db
+
+# Interne Vorbereitung für den Marktstand (nicht Teil der Abgabe)
+docs/marktstand/spickzettel.*
