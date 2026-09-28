@@ -47,16 +47,15 @@ function load_stations(PDO $pdo, array $stations): array
     $stmt = $pdo->prepare(
         'INSERT INTO stations
             (station_no, name, river_name, site_name, catchment_name, latitude, longitude,
-             elevation, status, coverage_from, display_name, story_role, sort_order, is_active)
+             elevation, status, coverage_from, sort_order, is_active)
          VALUES
             (:station_no, :name, :river_name, :site_name, :catchment_name, :latitude, :longitude,
-             :elevation, :status, :coverage_from, :display_name, :story_role, :sort_order, 1)
+             :elevation, :status, :coverage_from, :sort_order, 1)
          ON DUPLICATE KEY UPDATE
             name = VALUES(name), river_name = VALUES(river_name), site_name = VALUES(site_name),
             catchment_name = VALUES(catchment_name), latitude = VALUES(latitude),
             longitude = VALUES(longitude), elevation = VALUES(elevation), status = VALUES(status),
-            coverage_from = VALUES(coverage_from), display_name = VALUES(display_name),
-            story_role = VALUES(story_role), sort_order = VALUES(sort_order), is_active = 1'
+            coverage_from = VALUES(coverage_from), sort_order = VALUES(sort_order), is_active = 1'
     );
     foreach ($stations as $row) {
         $stmt->execute($row);

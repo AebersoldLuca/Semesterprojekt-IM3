@@ -38,44 +38,25 @@ const BAFU_MAX_ROWS        = 8000;                // Reserve unter dem API-Limit
  * und Wassertemperatur (WT) als Tagesmittel lückenlos ab 2020 (siehe
  * docs/api-analyse.md, reproduzierbar mit «php etl/extract.php --candidates»).
  *
- * Name, Gewässer, Koordinaten usw. kommen NICHT von hier, sondern aus der API.
- * display_name und story_role sind redaktionelle Texte für die Website.
- * Die Reihenfolge bestimmt die Farbe der Station im Chart.
+ * Hier stehen nur die Nummern. Name, Gewässer, Koordinaten usw. kommen aus der
+ * API; redaktionelle Texte (Beschreibung, Farbe) gehören ins Frontend (script.js).
+ * Die Reihenfolge bestimmt die Sortierung der Datensätze in unload.php.
  */
 const STATIONS = [
-    '2019' => [
-        'display_name' => 'Aare – Brienzwiler',
-        'story_role'   => 'Die junge Aare im Berner Oberland, noch vor dem Brienzersee. Gespeist von Gletschern und Schneeschmelze.',
-    ],
-    '2243' => [
-        'display_name' => 'Limmat – Baden',
-        'story_role'   => 'Abfluss des Zürichsees: Das Wasser war zuvor im See, dessen Oberfläche sich im Sommer stark erwärmt.',
-    ],
-    '2009' => [
-        'display_name' => 'Rhône – Porte du Scex',
-        'story_role'   => 'Die Rhône kurz vor dem Genfersee, mit dem Wasser aus den Walliser Alpen.',
-    ],
-    '2044' => [
-        'display_name' => 'Thur – Andelfingen',
-        'story_role'   => 'Fluss aus der Ostschweiz ohne grossen See und ohne grosse Gletscher im Einzugsgebiet.',
-    ],
-    '2068' => [
-        'display_name' => 'Ticino – Riazzino',
-        'story_role'   => 'Alpensüdseite: der Ticino kurz vor dem Lago Maggiore.',
-    ],
-    '2091' => [
-        'display_name' => 'Rhein – Rheinfelden',
-        'story_role'   => 'Der Rhein unterhalb der Aaremündung. Hier fliesst das Wasser eines grossen Teils der Nordschweiz vorbei.',
-    ],
+    '2243', // Limmat – Baden
+    '2044', // Thur – Andelfingen
+    '2091', // Rhein – Rheinfelden
+    '2019', // Aare – Brienzwiler
+    '2009', // Rhône – Porte du Scex
+    '2068', // Ticino – Riazzino
 ];
 
-/** Stationsauswahl mit Reihenfolge (sort_order = Farbe im Chart). */
+/** Stationsauswahl: station_no → Position in der Liste (sort_order) */
 function selected_stations(): array
 {
     $stations = [];
-    $i = 0;
-    foreach (STATIONS as $no => $s) {
-        $stations[(string) $no] = $s + ['sort_order' => ++$i];
+    foreach (STATIONS as $i => $no) {
+        $stations[$no] = ['sort_order' => $i + 1];
     }
     return $stations;
 }
@@ -214,7 +195,7 @@ function plan_windows(DateTimeImmutable $from, DateTimeImmutable $to, int $rowsP
 /**
  * Kompletter Extract-Schritt: Stationen + Messwerte abrufen.
  *
- * @param array $selection station_no → Angaben aus STATIONS
+ * @param array $selection Ergebnis von selected_stations()
  * @return array{stations: array, rows: array, api_requests: int, failed_windows: int, missing_stations: string[]}
  *         stations = Rohdaten aus «stations», rows = Rohdaten aus «data_1day_mean»
  */
@@ -308,7 +289,7 @@ function extract_candidates(callable $say): void
     $say(sprintf('%d aktive Stationen mit Tagesmittel für W und WT am %s:', count($candidates),
         $day->setTimezone(new DateTimeZone('Etc/GMT-1'))->format('Y-m-d')));
     foreach ($candidates as $c) {
-        $mark = isset(STATIONS[$c['station_no']]) ? '*' : ' ';
+        $mark = in_array($c['station_no'], STATIONS, true) ? '*' : ' ';
         $say(sprintf(' %s %s  %-28s %-32s %-14s seit %s', $mark, $c['station_no'], $c['river'],
             $c['name'], $c['catchment'], $c['coverage_from']));
     }

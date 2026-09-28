@@ -45,10 +45,7 @@ CREATE TABLE IF NOT EXISTS stations (
     elevation      DECIMAL(7,2)  NULL,               -- BAFU liefert oft NULL
     status         VARCHAR(30)   NULL,               -- 'Aufgebaut' = in Betrieb
     coverage_from  DATE          NULL,               -- frühestes Datum mit Daten (laut BAFU)
-    -- Redaktionelle Angaben aus STATIONS in etl/extract.php (keine Messdaten):
-    display_name   VARCHAR(160)  NOT NULL,           -- 'Aare – Brienzwiler'
-    story_role     VARCHAR(255)  NULL,               -- warum diese Station in der Story ist
-    sort_order     SMALLINT      NOT NULL DEFAULT 0, -- bestimmt auch die Farbe im Chart
+    sort_order     SMALLINT      NOT NULL DEFAULT 0, -- Reihenfolge aus STATIONS (etl/extract.php)
     is_active      TINYINT(1)    NOT NULL DEFAULT 1, -- 0 = nicht mehr in der Auswahl
     created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -40,7 +40,7 @@ const DAY_TIMEZONE = 'Etc/GMT-1';
  * Kompletter Transform-Schritt.
  *
  * @param array $extract   Ergebnis von run_extract(): ['stations' => …, 'rows' => …]
- * @param array $selection station_no → Angaben aus STATIONS (extract.php)
+ * @param array $selection Ergebnis von selected_stations() (extract.php)
  * @return array{stations: array, observations: array, rejected: array<string,int>}
  */
 function run_transform(array $extract, array $selection): array
@@ -57,7 +57,7 @@ function run_transform(array $extract, array $selection): array
     return ['stations' => $stations, 'observations' => $t['rows'], 'rejected' => $t['rejected']];
 }
 
-/** Stations-Stammdaten aus der API + redaktionelle Angaben → Zeile für «stations». */
+/** Stations-Stammdaten aus der API → Zeile für die Tabelle «stations». */
 function transform_station(array $raw, array $selection): ?array
 {
     $no = trim((string) ($raw['no'] ?? ''));
@@ -75,8 +75,6 @@ function transform_station(array $raw, array $selection): ?array
         'elevation'      => is_numeric($raw['elevation'] ?? null) ? (float) $raw['elevation'] : null,
         'status'         => nullable_string($raw['status'] ?? null),
         'coverage_from'  => !empty($raw['coverageFrom']) ? substr($raw['coverageFrom'], 0, 10) : null,
-        'display_name'   => $selection[$no]['display_name'],
-        'story_role'     => $selection[$no]['story_role'],
         'sort_order'     => $selection[$no]['sort_order'],
     ];
 }
