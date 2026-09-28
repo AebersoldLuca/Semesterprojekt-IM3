@@ -66,13 +66,13 @@ als Vergleichsgruppe.
 
 ![Einstieg mit Hypothese in der Desktop-Ansicht](docs/screenshots/desktop.png)
 
-![Jahresvergleich 2022 und 2026 pro Fluss in der Desktop-Ansicht](docs/screenshots/desktop-grafik.png)
+![Jahresvergleich 2022 und 2026 pro Fluss mit «Vergrössern» in der Desktop-Ansicht](docs/screenshots/desktop-grafik.png)
 
 ### Mobile
 
 <p>
   <img src="docs/screenshots/mobile.png" alt="Einstieg mit Hypothese in der Mobile-Ansicht" width="300">
-  <img src="docs/screenshots/mobile-grafik.png" alt="Vergleich des Wasserstands 2022 und 2026 in der Mobile-Ansicht" width="300">
+  <img src="docs/screenshots/mobile-grafik.png" alt="Vergrösserte Ansicht eines Flusses in der Mobile-Ansicht" width="300">
 </p>
 
 ## Foto des Marktstands

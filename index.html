@@ -7,7 +7,7 @@
   <meta name="description" content="Eine DataStory mit Messdaten des BAFU: Waren die Flüsse im Mittelland 2026 wärmer und führten sie weniger Wasser als im Hitzesommer 2022?">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 20c4-4 8-4 12 0s8 4 12 0 4-2 4-2' fill='none' stroke='%232a78d6' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M2 12c4-4 8-4 12 0s8 4 12 0 4-2 4-2' fill='none' stroke='%23eb6834' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -114,6 +114,7 @@
       Jede Grafik zeigt einen Fluss: <span class="year-key year-key--ref"></span>grau das Jahr 2022,
       <span class="year-key year-key--cur"></span>farbig das Jahr <span data-slot="year-cur">2026</span>.
       Fahre mit der Maus oder dem Finger über eine Grafik, um beide Jahre am selben Kalendertag zu vergleichen.
+      Mit <span aria-hidden="true">⤢</span> «Vergrössern» öffnest du einen Fluss in einer grossen Ansicht, auch im Vollbild.
     </p>
   </div>
 
@@ -141,100 +142,14 @@
 </section>
 
 <!-- =============================================================
-     4) HYPOTHESE IM TEST
+     4) URTEIL ZUR HYPOTHESE
      ============================================================= -->
-<section class="section" id="test" aria-labelledby="test-title">
-  <div class="prose">
-    <p class="kicker">Hypothese im Test</p>
-    <h2 id="test-title">Wärmer? Tiefer?</h2>
-    <p data-slot="test-intro">
-      Verglichen wird in beiden Jahren derselbe Zeitraum – vom 1. Januar bis zum letzten verfügbaren Messtag.
-    </p>
-  </div>
-
-  <figure class="figure figure--narrow" id="db-wt-figure">
-    <figcaption class="figure__title">
-      <span data-slot="db-wt-title">Mittlere Wassertemperatur</span>
-      <span class="figure__unit">in °C</span>
-    </figcaption>
-    <div class="dumbbell-legend" aria-hidden="true">
-      <span><span class="dot dot--ref"></span><span data-slot="year-ref">2022</span></span>
-      <span><span class="dot dot--cur"></span><span data-slot="year-cur">2026</span></span>
-    </div>
-    <div class="chart chart--dumbbell" id="db-wt-chart"></div>
-    <p class="figure__note" id="db-wt-note"></p>
-  </figure>
-
-  <div class="prose findings" id="finding-wt" aria-live="polite"></div>
-
-  <figure class="figure figure--narrow" id="db-w-figure">
-    <figcaption class="figure__title">
-      <span data-slot="db-w-title">Mittlerer Wasserstand</span>
-      <span class="figure__unit">Abweichung vom mittleren Pegel in cm</span>
-    </figcaption>
-    <div class="dumbbell-legend" aria-hidden="true">
-      <span><span class="dot dot--ref"></span><span data-slot="year-ref">2022</span></span>
-      <span><span class="dot dot--cur"></span><span data-slot="year-cur">2026</span></span>
-    </div>
-    <div class="chart chart--dumbbell" id="db-w-chart"></div>
-    <p class="figure__note" id="db-w-note"></p>
-  </figure>
-
-  <div class="prose findings" id="finding-w" aria-live="polite"></div>
-
+<section class="section" id="urteil" aria-label="Urteil zur Hypothese">
   <div class="verdict" id="verdict" aria-live="polite"></div>
 </section>
 
 <!-- =============================================================
-     5) EINORDNUNG: alle Jahre seit 2020
-     ============================================================= -->
-<section class="section" id="einordnung" aria-labelledby="einordnung-title">
-  <div class="prose">
-    <p class="kicker">Einordnung</p>
-    <h2 id="einordnung-title">Und die anderen Jahre?</h2>
-    <p>
-      Zwei Jahre zu vergleichen, kann täuschen. Deshalb hier alle Jahre seit 2020 – 2022 und 2026 sind hervorgehoben.
-    </p>
-  </div>
-
-  <figure class="figure figure--narrow" id="heat-figure">
-    <figcaption class="figure__title">
-      <span>Tage mit einem Tagesmittel von mindestens 20&nbsp;°C</span>
-      <span class="figure__unit">Anzahl Tage pro Jahr</span>
-    </figcaption>
-    <div class="table-scroll"><table class="heat-table" id="heat-table"></table></div>
-    <p class="figure__note" id="heat-note"></p>
-  </figure>
-
-  <div class="prose">
-    <h3 class="subhead" id="ytd-title">Jedes Jahr bis zum gleichen Stichtag</h3>
-    <p data-slot="ytd-intro">
-      Jedes Jahr wird nur über denselben Zeitraum gemittelt – so lassen sich alle Jahre fair vergleichen.
-    </p>
-  </div>
-  <figure class="figure figure--narrow" id="ytd-figure">
-    <div class="controls">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse Jahresvergleich" id="ytd-param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
-    </div>
-    <figcaption class="figure__title">
-      <span id="ytd-chart-title">Mittlere Wassertemperatur</span>
-      <span class="figure__unit" id="ytd-unit">in °C</span>
-    </figcaption>
-    <div class="dumbbell-legend" aria-hidden="true">
-      <span><span class="dot dot--past"></span>andere Jahre</span>
-      <span><span class="dot dot--ref"></span><span data-slot="year-ref">2022</span></span>
-      <span><span class="dot dot--cur"></span><span data-slot="year-cur">2026</span></span>
-    </div>
-    <div class="chart chart--ytd" id="ytd-chart"></div>
-    <p class="figure__note" id="ytd-note"></p>
-  </figure>
-</section>
-
-<!-- =============================================================
-     6) SELBST ENTDECKEN (Explorer)
+     5) SELBST ENTDECKEN (Explorer)
      ============================================================= -->
 <section class="section section--wide" id="vergleich" aria-labelledby="vergleich-title">
   <div class="prose">
@@ -289,24 +204,7 @@
 </section>
 
 <!-- =============================================================
-     7) GRENZEN
-     ============================================================= -->
-<section class="section" id="grenzen" aria-labelledby="grenzen-title">
-  <div class="prose limits">
-    <p class="kicker">Grenzen</p>
-    <h2 id="grenzen-title">Was die Daten nicht zeigen</h2>
-    <ul>
-      <li><strong>2026 ist noch nicht vorbei.</strong> Verglichen wird nur bis <span data-slot="cutoff-text">zum letzten Messtag</span>. Ein kühler Herbst kann das Bild noch verändern.</li>
-      <li><strong>Viele Werte von 2026 sind noch ungeprüft.</strong> <span data-slot="checked-text">Ein Teil der Werte von 2026</span> ist vom BAFU erst provisorisch oder ohne Freigabestatus und kann noch korrigiert werden. Die Werte von 2022 sind grösstenteils definitiv.</li>
-      <li><strong>Wasserstand ist nicht Wassermenge.</strong> Wir vergleichen die Höhe des Pegels an derselben Stelle. Die tatsächliche Wassermenge (Abfluss) misst das BAFU separat; ein tieferer Pegel deutet auf weniger Wasser hin, Flussbett und Wehre können ihn aber mitbeeinflussen.</li>
-      <li><strong>Zwei Jahre sind kein Trend.</strong> Dass 2026 wärmer ist als 2022, sagt nichts darüber aus, wie es weitergeht. Für Klimatrends braucht es Jahrzehnte – unsere Datenbank reicht bis 2020 zurück.</li>
-      <li><strong>Keine Ursachen.</strong> Die Daten zeigen <em>dass</em>, nicht <em>warum</em>. Lufttemperatur, Niederschlag, Schneeschmelze, Seen und Kraftwerke wirken zusammen.</li>
-    </ul>
-  </div>
-</section>
-
-<!-- =============================================================
-     8) METHODIK & TRANSPARENZ
+     6) METHODIK & TRANSPARENZ
      ============================================================= -->
 <section class="section section--method" id="methodik" aria-labelledby="methodik-title">
   <div class="prose">
@@ -358,11 +256,39 @@
   </p>
 </footer>
 
+<!-- Vergrösserte Ansicht eines Flusses (Jahresvergleich) -->
+<dialog class="zoom" id="zoom" aria-labelledby="zoom-title">
+  <div class="zoom__inner">
+    <div class="zoom__head">
+      <h2 class="zoom__title" id="zoom-title">Fluss</h2>
+      <div class="zoom__actions">
+        <button type="button" class="zoom__btn" id="zoom-prev" aria-label="Vorheriger Fluss">‹</button>
+        <button type="button" class="zoom__btn" id="zoom-next" aria-label="Nächster Fluss">›</button>
+        <button type="button" class="zoom__btn" id="zoom-fullscreen" aria-pressed="false">Vollbild</button>
+        <button type="button" class="zoom__btn zoom__btn--close" id="zoom-close" aria-label="Schliessen">✕</button>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="zoom-param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Darstellung" id="zoom-smooth-switch">
+        <button type="button" role="radio" aria-checked="true"  data-smooth="7">7-Tage-Mittel</button>
+        <button type="button" role="radio" aria-checked="false" data-smooth="1">Tageswerte</button>
+      </div>
+    </div>
+    <p class="multiple__sub" id="zoom-sub"></p>
+    <div class="chart chart--zoom" id="zoom-chart" tabindex="0" aria-label="Vergrösserte Grafik. Pfeiltasten wechseln den Tag."></div>
+    <p class="figure__note" id="zoom-note"></p>
+  </div>
+</dialog>
+
 <!-- Globaler Fehlerhinweis, falls die eigene API nicht erreichbar ist -->
 <div class="toast" id="toast" role="alert" hidden></div>
 
 <!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN – alle DATEN kommen aus unload.php. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js" defer></script>
+<script src="script.js?v=3" defer></script>
 </body>
 </html>

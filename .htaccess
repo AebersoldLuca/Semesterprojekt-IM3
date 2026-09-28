@@ -14,3 +14,11 @@
 
 # Versteckte Ordner (.git, .idea), falls versehentlich hochgeladen
 RedirectMatch 404 /\.(git|idea|vscode)(/|$)
+
+# HTML, JavaScript und CSS bei jedem Aufruf auf Aktualität prüfen lassen.
+# Ohne diese Regel behalten manche Browser (v.a. Safari) alte Versionen im Cache.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(html|js|css)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
