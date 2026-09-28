@@ -18,6 +18,7 @@
  *                        to=YYYY-MM-DD        (optional, Standard: jüngster Tag in der DB)
  *   type=seasonal      typischer Jahresgang (Monatsmittel), parameter=W|WT
  *   type=insights      Kennzahlen für die Texte der DataStory
+ *   type=compare       Vergleich zweier Jahre, z.B. years=2022,2026 (Hypothese der Story)
  *   type=meta          Quelle, Zeitraum, letzter Import, Freigabestatus
  *
  * Beispiel: unload.php?type=observations&stations=2019,2243&parameter=WT&from=2026-01-01&to=2026-09-21
@@ -62,8 +63,9 @@ try {
         'observations' => unload_observations($pdo),
         'seasonal'     => unload_seasonal($pdo),
         'insights'     => unload_insights($pdo),
+        'compare'      => unload_compare($pdo),
         'meta'         => unload_meta($pdo),
-        default        => throw new UnloadException('Unbekannter oder fehlender Parameter «type». Erlaubt: stations, observations, seasonal, insights, meta.'),
+        default        => throw new UnloadException('Unbekannter oder fehlender Parameter «type». Erlaubt: stations, observations, seasonal, insights, compare, meta.'),
     };
     send_json($data);
 } catch (UnloadException $e) {
@@ -414,6 +416,137 @@ function unload_insights(PDO $pdo): array
         'complete_years' => $years ? [$years[0], end($years)] : null,
         'ytd_cutoff'     => $cutoff,
         'stations'       => $out,
+    ];
+}
+
+/**
+ * type=compare&years=2022,2026 – Vergleich zweier Jahre für die Hypothese
+ * «2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser
+ * als im Hitzesommer 2022».
+ *
+ * Fair verglichen wird immer derselbe Zeitraum: 1. Januar bis zum Stichtag
+ * (Tag/Monat des jüngsten Messwerts, falls das jüngere Jahr noch läuft).
+ *
+ * Pro Station und Jahr:
+ *   summary  Kennzahlen bis zum Stichtag (Mittel, Maximum, Tage ≥ 20/25 °C,
+ *            mittlerer und tiefster Pegel, Anteil geprüfter Werte)
+ *   series   alle Tageswerte des Jahres: [MM-DD, Wassertemperatur, Pegel in cm]
+ * Pegel = Abweichung vom mittleren Pegel der Station (gesamter Zeitraum) in cm.
+ */
+function unload_compare(PDO $pdo): array
+{
+    // 1) Eingaben prüfen: genau zwei Jahreszahlen
+    $years = array_values(array_unique(array_map('trim', explode(',', (string) ($_GET['years'] ?? '2022,2026')))));
+    if (count($years) !== 2 || !preg_match('/^\d{4}$/', $years[0]) || !preg_match('/^\d{4}$/', $years[1])) {
+        throw new UnloadException('Parameter «years» muss zwei Jahreszahlen enthalten, z.B. years=2022,2026.');
+    }
+    $years = array_map('intval', $years);
+    sort($years);
+
+    $stations = fetch_stations($pdo);
+    $latest   = latest_obs_date($pdo);
+    if (!$stations || $latest === null) {
+        throw new UnloadException('Es sind noch keine Messwerte in der Datenbank.', 404);
+    }
+    $ids       = array_column($stations, 'id');
+    $in        = placeholders($ids);
+    $baselines = w_baselines($pdo, $ids);
+
+    // Stichtag: Läuft das jüngere Jahr noch, wird bis zu dessen letztem Messtag verglichen
+    $cutoff = (int) substr($latest, 0, 4) === $years[1] ? substr($latest, 5) : '12-31';
+
+    // 2) Kennzahlen bis zum Stichtag – in SQL aggregiert
+    $stmt = $pdo->prepare(
+        "SELECT station_id, YEAR(obs_date) AS y, parameter_code AS p,
+                COUNT(*) AS n, AVG(value) AS mean, MIN(value) AS min, MAX(value) AS max,
+                SUM(value >= 20) AS ge20, SUM(value >= 25) AS ge25,
+                SUM(release_state IN (2, 3)) AS checked
+         FROM observations
+         WHERE station_id IN ($in) AND YEAR(obs_date) IN (?, ?) AND DATE_FORMAT(obs_date, '%m-%d') <= ?
+         GROUP BY station_id, y, p"
+    );
+    $stmt->execute([...$ids, $years[0], $years[1], $cutoff]);
+    $agg = [];
+    foreach ($stmt as $r) {
+        $agg[(int) $r['station_id']][(int) $r['y']][$r['p']] = $r;
+    }
+
+    // Datum des Maximums (Temperatur) bzw. Minimums (Pegel) bis zum Stichtag
+    $extremeDate = $pdo->prepare(
+        "SELECT MIN(obs_date) FROM observations
+         WHERE station_id = ? AND parameter_code = ? AND YEAR(obs_date) = ? AND value = ?
+           AND DATE_FORMAT(obs_date, '%m-%d') <= ?"
+    );
+    $dateOf = function (int $sid, string $p, int $y, $value) use ($extremeDate, $cutoff) {
+        $extremeDate->execute([$sid, $p, $y, $value, $cutoff]);
+        return $extremeDate->fetchColumn() ?: null;
+    };
+
+    // 3) Tageswerte beider Jahre (für die Grafik, ganzes Jahr)
+    $stmt = $pdo->prepare(
+        "SELECT station_id, YEAR(obs_date) AS y, DATE_FORMAT(obs_date, '%m-%d') AS md,
+                MAX(CASE WHEN parameter_code = 'WT' THEN value END) AS wt,
+                MAX(CASE WHEN parameter_code = 'W'  THEN value END) AS w
+         FROM observations
+         WHERE station_id IN ($in) AND YEAR(obs_date) IN (?, ?)
+         GROUP BY station_id, obs_date ORDER BY station_id, obs_date"
+    );
+    $stmt->execute([...$ids, $years[0], $years[1]]);
+    $series = [];
+    foreach ($stmt as $r) {
+        $sid = (int) $r['station_id'];
+        $series[$sid][(int) $r['y']][] = [
+            $r['md'],
+            $r['wt'] !== null ? round((float) $r['wt'], 2) : null,
+            $r['w'] !== null ? round(((float) $r['w'] - $baselines[$sid]) * 100, 1) : null,
+        ];
+    }
+
+    // 4) Antwort zusammenbauen
+    $out = [];
+    foreach ($stations as $s) {
+        $sid = $s['id'];
+        $perYear = [];
+        foreach ($years as $y) {
+            $wt = $agg[$sid][$y]['WT'] ?? null;
+            $w  = $agg[$sid][$y]['W'] ?? null;
+            $cm = fn($v) => round(((float) $v - $baselines[$sid]) * 100, 1);
+            $perYear[$y] = [
+                'summary' => [
+                    'wt_mean'      => $wt ? round((float) $wt['mean'], 2) : null,
+                    'wt_max'       => $wt ? round((float) $wt['max'], 2) : null,
+                    'wt_max_date'  => $wt ? $dateOf($sid, 'WT', $y, $wt['max']) : null,
+                    'days_ge_20'   => $wt ? (int) $wt['ge20'] : null,
+                    'days_ge_25'   => $wt ? (int) $wt['ge25'] : null,
+                    'days_wt'      => $wt ? (int) $wt['n'] : 0,
+                    'w_mean_cm'    => $w ? $cm($w['mean']) : null,
+                    'w_min_cm'     => $w ? $cm($w['min']) : null,
+                    'w_min_date'   => $w ? $dateOf($sid, 'W', $y, $w['min']) : null,
+                    'days_w'       => $w ? (int) $w['n'] : 0,
+                    // Anteil vom BAFU geprüfter Werte (Status 2 oder 3)
+                    'checked_share' => ($wt || $w)
+                        ? round(((int) ($wt['checked'] ?? 0) + (int) ($w['checked'] ?? 0)) / max(1, (int) ($wt['n'] ?? 0) + (int) ($w['n'] ?? 0)), 3)
+                        : null,
+                ],
+                'series' => $series[$sid][$y] ?? [],
+            ];
+        }
+        $out[] = [
+            'station_no'   => $s['station_no'],
+            'display_name' => $s['display_name'],
+            'river_name'   => $s['river_name'],
+            'name'         => $s['name'],
+            'sort_order'   => $s['sort_order'],
+            'years'        => (object) $perYear,
+        ];
+    }
+
+    return [
+        'years'       => $years,
+        'cutoff'      => $cutoff,           // 'MM-DD'
+        'latest_date' => $latest,
+        'columns'     => ['MM-DD', 'WT', 'W_cm'],
+        'stations'    => $out,
     ];
 }
 

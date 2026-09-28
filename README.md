@@ -2,11 +2,11 @@
 
 ## Kurzbeschreibung
 
-Die DataStory vergleicht Wasserstand und Wassertemperatur von Aare, Limmat, Rhône, Thur, Ticino und Rhein
-seit 2020. Ein PHP-ETL-Prozess lädt die Tagesmittel täglich per Cronjob von der API des Bundesamts für Umwelt
-(BAFU), prüft sie und speichert sie in einer eigenen MySQL-Datenbank. Die Website liest nur aus dieser
-Datenbank und zeigt in interaktiven D3-Grafiken, wie unterschiedlich Seeabflüsse, Gletscherflüsse und
-Mittellandflüsse durch das Jahr gehen.
+Die DataStory prüft die Hypothese, dass die Flüsse im Mittelland 2026 bisher wärmer waren und weniger Wasser
+führten als im Hitzesommer 2022. Grundlage sind Tagesmittel von Wassertemperatur und Wasserstand an sechs
+Messstationen des BAFU. Ein PHP-ETL-Prozess lädt die Daten täglich per Cronjob in eine eigene MySQL-Datenbank;
+die Website liest nur daraus und vergleicht beide Jahre in interaktiven D3-Grafiken – mit drei Alpenflüssen
+als Vergleichsgruppe.
 
 ## Learnings
 
@@ -64,15 +64,15 @@ Mittellandflüsse durch das Jahr gehen.
 
 ### Desktop
 
-![Einstieg der DataStory in der Desktop-Ansicht](docs/screenshots/desktop.png)
+![Einstieg mit Hypothese in der Desktop-Ansicht](docs/screenshots/desktop.png)
 
-![Interaktive Hauptgrafik mit Tooltip in der Desktop-Ansicht](docs/screenshots/desktop-grafik.png)
+![Jahresvergleich 2022 und 2026 pro Fluss in der Desktop-Ansicht](docs/screenshots/desktop-grafik.png)
 
 ### Mobile
 
 <p>
-  <img src="docs/screenshots/mobile.png" alt="Einstieg der DataStory in der Mobile-Ansicht" width="300">
-  <img src="docs/screenshots/mobile-grafik.png" alt="Interaktive Hauptgrafik mit Werte-Panel in der Mobile-Ansicht" width="300">
+  <img src="docs/screenshots/mobile.png" alt="Einstieg mit Hypothese in der Mobile-Ansicht" width="300">
+  <img src="docs/screenshots/mobile-grafik.png" alt="Vergleich des Wasserstands 2022 und 2026 in der Mobile-Ansicht" width="300">
 </p>
 
 ## Foto des Marktstands

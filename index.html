@@ -3,47 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sechs Flüsse, sechs Temperamente – Wasserstand und Wassertemperatur im Jahreslauf</title>
-  <meta name="description" content="Eine DataStory mit Messdaten des BAFU: Wie unterscheiden sich Wasserstand und Wassertemperatur von Aare, Limmat, Rhône, Thur, Ticino und Rhein im Jahresverlauf?">
+  <title>Heisser als der Hitzesommer – Schweizer Flüsse 2026 im Vergleich mit 2022</title>
+  <meta name="description" content="Eine DataStory mit Messdaten des BAFU: Waren die Flüsse im Mittelland 2026 wärmer und führten sie weniger Wasser als im Hitzesommer 2022?">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 20c4-4 8-4 12 0s8 4 12 0 4-2 4-2' fill='none' stroke='%232a78d6' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M2 12c4-4 8-4 12 0s8 4 12 0 4-2 4-2' fill='none' stroke='%23eb6834' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<a class="skip-link" href="#vergleich">Zur interaktiven Grafik springen</a>
+<a class="skip-link" href="#jahresvergleich">Zur interaktiven Grafik springen</a>
 
 <!-- =============================================================
-     1) EINSTIEG
+     1) EINSTIEG: Hypothese
      ============================================================= -->
 <header class="hero">
   <div class="hero__inner">
     <p class="kicker">DataStory · Hydrologie Schweiz</p>
-    <h1 class="hero__title">Sechs Flüsse,<br>sechs Temperamente</h1>
+    <h1 class="hero__title">Heisser als der Hitzesommer</h1>
     <p class="hero__lede">
-      Flüsse sind nicht einfach «kalt» oder «warm». Ob ein Fluss im Hochsommer zum Baden einlädt
-      oder eiskalt bleibt, ob er im Juni anschwillt oder im Winter – das verrät viel darüber,
-      woher sein Wasser kommt.
+      2022 ging als Ausnahmejahr in die Schweizer Messgeschichte ein: Hitze, Trockenheit, Niedrigwasser.
+      Vier Jahre später zeigen die Messstationen des Bundes an einigen Flüssen noch extremere Werte.
     </p>
+
+    <div class="question">
+      <p class="question__label">Unsere Hypothese</p>
+      <p class="question__text">
+        2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.
+      </p>
+    </div>
 
     <div class="hero__stat" aria-live="polite">
       <div class="stat">
-        <span class="stat__value" data-slot="hero-warm-value">–</span>
-        <span class="stat__label" data-slot="hero-warm-label">wärmstes Tagesmittel</span>
+        <span class="stat__value" data-slot="hero-a-value">–</span>
+        <span class="stat__label" data-slot="hero-a-label">Tage mit mindestens 20 °C</span>
       </div>
-      <div class="stat stat--cold">
-        <span class="stat__value" data-slot="hero-cold-value">–</span>
-        <span class="stat__label" data-slot="hero-cold-label">höchstes Tagesmittel am kältesten Fluss</span>
+      <div class="stat">
+        <span class="stat__value" data-slot="hero-b-value">–</span>
+        <span class="stat__label" data-slot="hero-b-label">mittlerer Wasserstand</span>
       </div>
     </div>
 
-    <div class="question">
-      <p class="question__label">Die Leitfrage</p>
-      <p class="question__text">
-        Wie unterscheiden sich Wasserstand und Wassertemperatur von sechs Schweizer Flüssen
-        im Jahresverlauf – und was verraten diese Unterschiede über Gletscher, Seen und Regen?
-      </p>
-    </div>
     <p class="hero__source">Daten: Bundesamt für Umwelt BAFU, Tagesmittel <span data-slot="range-text">seit 2020</span></p>
   </div>
 </header>
@@ -56,59 +55,191 @@
 <section class="section" id="kontext" aria-labelledby="kontext-title">
   <div class="prose">
     <p class="kicker">Kontext</p>
-    <h2 id="kontext-title">Was gemessen wird</h2>
+    <h2 id="kontext-title">Warum ausgerechnet 2022?</h2>
     <p>
-      Das Bundesamt für Umwelt (BAFU) betreibt das nationale hydrologische Messnetz. An rund
-      250 aktiven Stationen werden Abfluss, Wasserstand und – an einem Teil davon – die
-      Wassertemperatur automatisch erfasst. Diese DataStory verwendet die <strong>Tagesmittel</strong>
-      von sechs Stationen.
+      Der Sommer 2022 war laut MeteoSchweiz der zweitwärmste seit Messbeginn 1864 – nur der Hitzesommer 2003
+      war wärmer. Das Bundesamt für Umwelt dokumentierte für dieses Jahr Wassertemperaturen von 25&nbsp;Grad und mehr
+      sowie extremes Niedrigwasser in grossen Flüssen wie Limmat und Rhein.
+      <a href="https://www.meteoschweiz.admin.ch/service-und-publikationen/publikationen/berichte-und-bulletins/2022/klimabulletin-sommer-2022.html" rel="noopener">(MeteoSchweiz, Klimabulletin Sommer 2022</a>;
+      <a href="https://www.bafu.admin.ch/de/hitze-und-trockenheit-im-sommer-2022" rel="noopener">BAFU, Hitze und Trockenheit im Sommer 2022)</a>
+    </p>
+    <p>
+      2022 ist damit ein guter Massstab: Wenn 2026 an denselben Messstationen noch wärmer und noch tiefer ist,
+      ist das bemerkenswert.
     </p>
   </div>
 
   <div class="cards cards--3">
     <article class="card">
-      <h3>Wasserstand</h3>
-      <p>
-        Die Höhe der Wasseroberfläche, beim BAFU in <strong>Metern über Meer</strong>. Ein Pegel in
-        Brienzwiler liegt auf rund 570&nbsp;m, einer im Tessin auf knapp 200&nbsp;m. Absolute Höhen
-        lassen sich deshalb nicht vergleichen – wir zeigen, wie weit ein Fluss
-        <strong>über oder unter seinem eigenen mittleren Pegel</strong> steht (in cm).
-      </p>
-    </article>
-    <article class="card">
       <h3>Wassertemperatur</h3>
       <p>
-        Die Temperatur des Wassers in <strong>°C</strong>. Sie ist wichtig für Fische und andere
-        Lebewesen, weil warmes Wasser weniger Sauerstoff lösen kann – und sie zeigt, ob ein Fluss
-        eher von Schmelzwasser oder von aufgewärmtem Seewasser gespeist wird.
+        Tagesmittel in <strong>°C</strong>. Warmes Wasser kann weniger Sauerstoff lösen und setzt kälteliebenden
+        Fischen zu – 2022 kam es laut BAFU zu Fischsterben, vor allem bei Bachforellen und Äschen.
       </p>
     </article>
     <article class="card">
-      <h3>Was die Unterschiede erklärt</h3>
+      <h3>Wasserstand</h3>
       <p>
-        Höhenlage, Gletscher und Schneeschmelze, Seen als Wärmespeicher, Regen, Lufttemperatur
-        und die Regulierung durch Wehre und Kraftwerke. Welche Faktoren wo wirken, beschreibt
-        diese Story vorsichtig – die Daten zeigen <em>Muster</em>, keine Ursachen.
+        Die Höhe der Wasseroberfläche am Pegel. Weil jede Station auf einer anderen Höhe liegt, zeigen wir,
+        wie viele <strong>Zentimeter über oder unter ihrem mittleren Pegel</strong> ein Fluss stand. Ein tieferer
+        Pegel an derselben Stelle heisst in der Regel: weniger Wasser.
+      </p>
+    </article>
+    <article class="card">
+      <h3>Mittelland und Alpen</h3>
+      <p>
+        Die Hypothese betrifft das <strong>Mittelland</strong>: Limmat, Thur und Rhein. Drei alpin geprägte Flüsse –
+        Aare bei Brienzwiler, Rhône und Ticino – dienen als <strong>Vergleich</strong>, denn Schmelzwasser aus
+        den Alpen reagiert anders auf einen heissen Sommer.
       </p>
     </article>
   </div>
 
   <div class="prose">
     <h3 class="subhead">Die sechs Messstationen</h3>
-    <p>Ausgewählt wurden Flüsse, die unterschiedliche Landschaften der Schweiz vertreten.</p>
   </div>
-  <ul class="station-list" id="station-list" aria-live="polite">
-    <li class="station-list__placeholder">Stationen werden geladen …</li>
-  </ul>
+  <div id="station-groups" aria-live="polite">
+    <p class="muted">Stationen werden geladen …</p>
+  </div>
 </section>
 
 <!-- =============================================================
-     3) VERGLEICH + ZEITVERLAUF (interaktive Hauptgrafik)
+     3) JAHR GEGEN JAHR (Kleine Vielfache: je Fluss 2022 vs. 2026)
+     ============================================================= -->
+<section class="section section--wide" id="jahresvergleich" aria-labelledby="jahresvergleich-title">
+  <div class="prose">
+    <p class="kicker">Jahr gegen Jahr</p>
+    <h2 id="jahresvergleich-title">2022 und 2026 übereinandergelegt</h2>
+    <p>
+      Jede Grafik zeigt einen Fluss: <span class="year-key year-key--ref"></span>grau das Jahr 2022,
+      <span class="year-key year-key--cur"></span>farbig das Jahr <span data-slot="year-cur">2026</span>.
+      Fahre mit der Maus oder dem Finger über eine Grafik, um beide Jahre am selben Kalendertag zu vergleichen.
+    </p>
+  </div>
+
+  <figure class="figure" id="cmp-figure">
+    <div class="controls" role="group" aria-label="Einstellungen Jahresvergleich">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="cmp-param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Darstellung" id="cmp-smooth-switch">
+        <button type="button" role="radio" aria-checked="true"  data-smooth="7">7-Tage-Mittel</button>
+        <button type="button" role="radio" aria-checked="false" data-smooth="1">Tageswerte</button>
+      </div>
+    </div>
+    <figcaption class="figure__title">
+      <span id="cmp-title">Wassertemperatur</span>
+      <span class="figure__unit" id="cmp-unit">in °C</span>
+    </figcaption>
+    <div class="multiples" id="cmp-multiples">
+      <p class="muted">Vergleich wird geladen …</p>
+    </div>
+    <p class="figure__note" id="cmp-note"></p>
+    <p class="figure__source">Quelle: BAFU, Hydrologische Beobachtungen (Tagesmittel), eigene Datenbank.</p>
+  </figure>
+</section>
+
+<!-- =============================================================
+     4) HYPOTHESE IM TEST
+     ============================================================= -->
+<section class="section" id="test" aria-labelledby="test-title">
+  <div class="prose">
+    <p class="kicker">Hypothese im Test</p>
+    <h2 id="test-title">Wärmer? Tiefer?</h2>
+    <p data-slot="test-intro">
+      Verglichen wird in beiden Jahren derselbe Zeitraum – vom 1. Januar bis zum letzten verfügbaren Messtag.
+    </p>
+  </div>
+
+  <figure class="figure figure--narrow" id="db-wt-figure">
+    <figcaption class="figure__title">
+      <span data-slot="db-wt-title">Mittlere Wassertemperatur</span>
+      <span class="figure__unit">in °C</span>
+    </figcaption>
+    <div class="dumbbell-legend" aria-hidden="true">
+      <span><span class="dot dot--ref"></span><span data-slot="year-ref">2022</span></span>
+      <span><span class="dot dot--cur"></span><span data-slot="year-cur">2026</span></span>
+    </div>
+    <div class="chart chart--dumbbell" id="db-wt-chart"></div>
+    <p class="figure__note" id="db-wt-note"></p>
+  </figure>
+
+  <div class="prose findings" id="finding-wt" aria-live="polite"></div>
+
+  <figure class="figure figure--narrow" id="db-w-figure">
+    <figcaption class="figure__title">
+      <span data-slot="db-w-title">Mittlerer Wasserstand</span>
+      <span class="figure__unit">Abweichung vom mittleren Pegel in cm</span>
+    </figcaption>
+    <div class="dumbbell-legend" aria-hidden="true">
+      <span><span class="dot dot--ref"></span><span data-slot="year-ref">2022</span></span>
+      <span><span class="dot dot--cur"></span><span data-slot="year-cur">2026</span></span>
+    </div>
+    <div class="chart chart--dumbbell" id="db-w-chart"></div>
+    <p class="figure__note" id="db-w-note"></p>
+  </figure>
+
+  <div class="prose findings" id="finding-w" aria-live="polite"></div>
+
+  <div class="verdict" id="verdict" aria-live="polite"></div>
+</section>
+
+<!-- =============================================================
+     5) EINORDNUNG: alle Jahre seit 2020
+     ============================================================= -->
+<section class="section" id="einordnung" aria-labelledby="einordnung-title">
+  <div class="prose">
+    <p class="kicker">Einordnung</p>
+    <h2 id="einordnung-title">Und die anderen Jahre?</h2>
+    <p>
+      Zwei Jahre zu vergleichen, kann täuschen. Deshalb hier alle Jahre seit 2020 – 2022 und 2026 sind hervorgehoben.
+    </p>
+  </div>
+
+  <figure class="figure figure--narrow" id="heat-figure">
+    <figcaption class="figure__title">
+      <span>Tage mit einem Tagesmittel von mindestens 20&nbsp;°C</span>
+      <span class="figure__unit">Anzahl Tage pro Jahr</span>
+    </figcaption>
+    <div class="table-scroll"><table class="heat-table" id="heat-table"></table></div>
+    <p class="figure__note" id="heat-note"></p>
+  </figure>
+
+  <div class="prose">
+    <h3 class="subhead" id="ytd-title">Jedes Jahr bis zum gleichen Stichtag</h3>
+    <p data-slot="ytd-intro">
+      Jedes Jahr wird nur über denselben Zeitraum gemittelt – so lassen sich alle Jahre fair vergleichen.
+    </p>
+  </div>
+  <figure class="figure figure--narrow" id="ytd-figure">
+    <div class="controls">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse Jahresvergleich" id="ytd-param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
+    </div>
+    <figcaption class="figure__title">
+      <span id="ytd-chart-title">Mittlere Wassertemperatur</span>
+      <span class="figure__unit" id="ytd-unit">in °C</span>
+    </figcaption>
+    <div class="dumbbell-legend" aria-hidden="true">
+      <span><span class="dot dot--past"></span>andere Jahre</span>
+      <span><span class="dot dot--ref"></span><span data-slot="year-ref">2022</span></span>
+      <span><span class="dot dot--cur"></span><span data-slot="year-cur">2026</span></span>
+    </div>
+    <div class="chart chart--ytd" id="ytd-chart"></div>
+    <p class="figure__note" id="ytd-note"></p>
+  </figure>
+</section>
+
+<!-- =============================================================
+     6) SELBST ENTDECKEN (Explorer)
      ============================================================= -->
 <section class="section section--wide" id="vergleich" aria-labelledby="vergleich-title">
   <div class="prose">
-    <p class="kicker">Vergleich</p>
-    <h2 id="vergleich-title">Tag für Tag im Vergleich</h2>
+    <p class="kicker">Selbst entdecken</p>
+    <h2 id="vergleich-title">Tag für Tag, alle Flüsse</h2>
     <p>
       Wähle Messgrösse, Zeitraum und Flüsse. Fahre mit der Maus oder dem Finger über die Grafik,
       um die Werte eines Tages zu sehen.
@@ -158,97 +289,24 @@
 </section>
 
 <!-- =============================================================
-     4) JAHRESGANG
+     7) GRENZEN
      ============================================================= -->
-<section class="section section--wide" id="jahresgang" aria-labelledby="jahresgang-title">
-  <div class="prose">
-    <p class="kicker">Im Jahreslauf</p>
-    <h2 id="jahresgang-title">Ein typisches Jahr</h2>
-    <p data-slot="season-intro">
-      Mittelt man alle vollständigen Jahre Monat für Monat, treten die Charaktere der Flüsse deutlich hervor.
-    </p>
-  </div>
-
-  <figure class="figure" id="season-figure">
-    <div class="controls">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse Jahresgang" id="season-param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
-    </div>
-    <div class="legend legend--static" id="season-legend" aria-hidden="true"></div>
-    <figcaption class="figure__title">
-      <span id="season-title">Monatsmittel der Wassertemperatur</span>
-      <span class="figure__unit" id="season-unit">in °C</span>
-    </figcaption>
-    <div class="chart chart--season" id="season-chart" tabindex="0"
-         aria-label="Liniendiagramm Jahresgang. Mit den Pfeiltasten durch die Monate navigieren.">
-      <div class="chart__status" id="season-status" hidden></div>
-    </div>
-    <p class="figure__note" id="season-note"></p>
-  </figure>
-
-  <div class="prose findings" id="season-findings" aria-live="polite"></div>
-</section>
-
-<!-- =============================================================
-     5) ERKENNTNISSE
-     ============================================================= -->
-<section class="section" id="erkenntnisse" aria-labelledby="erkenntnisse-title">
-  <div class="prose">
-    <p class="kicker">Erkenntnisse</p>
-    <h2 id="erkenntnisse-title">Was die Daten zeigen</h2>
-  </div>
-
-  <div class="insights" id="insights" aria-live="polite">
-    <p class="muted">Erkenntnisse werden aus der Datenbank berechnet …</p>
-  </div>
-
-  <!-- Badetage-Tabelle -->
-  <figure class="figure figure--narrow" id="heat-figure">
-    <figcaption class="figure__title">
-      <span>Tage mit einem Tagesmittel von mindestens 20&nbsp;°C</span>
-      <span class="figure__unit">Anzahl Tage pro Jahr</span>
-    </figcaption>
-    <div class="table-scroll"><table class="heat-table" id="heat-table"></table></div>
-    <p class="figure__note" id="heat-note"></p>
-  </figure>
-
-  <!-- Jahresvergleich -->
-  <div class="prose">
-    <h3 class="subhead" id="ytd-title">Wie aussergewöhnlich ist dieses Jahr?</h3>
-    <p data-slot="ytd-intro">
-      Jedes Jahr wird nur über denselben Zeitraum gemittelt – so lässt sich das laufende Jahr fair mit den Vorjahren vergleichen.
-    </p>
-  </div>
-  <figure class="figure figure--narrow" id="ytd-figure">
-    <div class="controls">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse Jahresvergleich" id="ytd-param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Wassertemperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
-    </div>
-    <figcaption class="figure__title">
-      <span id="ytd-chart-title">Mittlere Wassertemperatur</span>
-      <span class="figure__unit" id="ytd-unit">in °C</span>
-    </figcaption>
-    <div class="chart chart--ytd" id="ytd-chart"></div>
-    <p class="figure__note" id="ytd-note"></p>
-  </figure>
-
+<section class="section" id="grenzen" aria-labelledby="grenzen-title">
   <div class="prose limits">
-    <h3 class="subhead">Was die Daten nicht zeigen</h3>
+    <p class="kicker">Grenzen</p>
+    <h2 id="grenzen-title">Was die Daten nicht zeigen</h2>
     <ul>
-      <li><strong>Keine Klimatrends.</strong> <span data-slot="limits-years">Knapp sieben Jahre</span> sind zu kurz, um langfristige Entwicklungen zu belegen. Einzelne warme oder trockene Jahre sind Wetter, nicht Klima.</li>
-      <li><strong>Keine Ursachen.</strong> Die Daten zeigen, <em>dass</em> sich Flüsse unterscheiden. Warum, lässt sich nur mit Zusatzwissen (Einzugsgebiet, Seen, Gletscher, Kraftwerke) erklären.</li>
-      <li><strong>Nicht alle Werte sind geprüft.</strong> <span data-slot="release-share">Ein Teil der jüngsten Werte</span> ist noch provisorisch oder ohne Freigabestatus und kann vom BAFU nachträglich korrigiert werden.</li>
-      <li><strong>Wasserstand ist lokal.</strong> Ein Pegel misst die Wasserhöhe an genau einer Stelle; wie viele Zentimeter «viel» sind, hängt vom Flussbett ab.</li>
+      <li><strong>2026 ist noch nicht vorbei.</strong> Verglichen wird nur bis <span data-slot="cutoff-text">zum letzten Messtag</span>. Ein kühler Herbst kann das Bild noch verändern.</li>
+      <li><strong>Viele Werte von 2026 sind noch ungeprüft.</strong> <span data-slot="checked-text">Ein Teil der Werte von 2026</span> ist vom BAFU erst provisorisch oder ohne Freigabestatus und kann noch korrigiert werden. Die Werte von 2022 sind grösstenteils definitiv.</li>
+      <li><strong>Wasserstand ist nicht Wassermenge.</strong> Wir vergleichen die Höhe des Pegels an derselben Stelle. Die tatsächliche Wassermenge (Abfluss) misst das BAFU separat; ein tieferer Pegel deutet auf weniger Wasser hin, Flussbett und Wehre können ihn aber mitbeeinflussen.</li>
+      <li><strong>Zwei Jahre sind kein Trend.</strong> Dass 2026 wärmer ist als 2022, sagt nichts darüber aus, wie es weitergeht. Für Klimatrends braucht es Jahrzehnte – unsere Datenbank reicht bis 2020 zurück.</li>
+      <li><strong>Keine Ursachen.</strong> Die Daten zeigen <em>dass</em>, nicht <em>warum</em>. Lufttemperatur, Niederschlag, Schneeschmelze, Seen und Kraftwerke wirken zusammen.</li>
     </ul>
   </div>
 </section>
 
 <!-- =============================================================
-     6) METHODIK & TRANSPARENZ
+     8) METHODIK & TRANSPARENZ
      ============================================================= -->
 <section class="section section--method" id="methodik" aria-labelledby="methodik-title">
   <div class="prose">
@@ -281,10 +339,12 @@
     <h3 class="subhead">So wurden die Daten verarbeitet</h3>
     <ul>
       <li>Ein PHP-Script (<code>etl/load.php</code>) lädt die Daten täglich per Cronjob von der BAFU-API und speichert sie in einer eigenen MySQL-Datenbank. Diese Website liest über <code>unload.php</code> <strong>nur aus dieser Datenbank</strong> – fällt die BAFU-API aus, bleibt die Story mit den gespeicherten Daten verfügbar.</li>
+      <li>Jahresvergleiche beziehen sich immer auf denselben Zeitraum: 1. Januar bis zum letzten verfügbaren Messtag des laufenden Jahres. Das «7-Tage-Mittel» in den Grafiken ist der Durchschnitt des Tages und der sechs Tage davor; die Kennzahlen werden aus den ungeglätteten Tagesmitteln berechnet.</li>
       <li>Das BAFU liefert Zeitstempel in UTC; ein Tagesmittel beginnt um 00:00 Uhr Schweizer Normalzeit (MEZ). Die Daten sind dem entsprechenden Kalendertag zugeordnet.</li>
       <li>Werte werden nie geschätzt oder aufgefüllt. Unplausible Werte (ausserhalb physikalisch sinnvoller Grenzen, falsche Einheit) werden verworfen. Ungeprüfte Tagesmittel von exakt 0.00&nbsp;°C gelten als vermuteter Sensorausfall und werden nicht übernommen – <span data-slot="rejected-text">sie erscheinen als Lücke</span>.</li>
-      <li>Der Freigabestatus des BAFU wird mitgespeichert: <strong>1</strong> provisorisch, <strong>2</strong> validiert, <strong>3</strong> definitiv. Jüngere Werte ohne Status sind in der Regel noch nicht geprüft. Bei jedem Import werden die letzten 60 Tage neu geladen, damit Korrekturen des BAFU übernommen werden.</li>
-      <li>Der Wasserstand wird als Abweichung vom mittleren Pegel der jeweiligen Station über den gesamten gespeicherten Zeitraum dargestellt. Monatsmittel im Jahresgang stammen nur aus vollständigen Kalenderjahren.</li>
+      <li>Der Freigabestatus des BAFU wird mitgespeichert: <strong>1</strong> provisorisch, <strong>2</strong> validiert, <strong>3</strong> definitiv. Bei jedem Import werden die letzten 60 Tage neu geladen, damit Korrekturen des BAFU übernommen werden.</li>
+      <li>Der Wasserstand wird als Abweichung vom mittleren Pegel der jeweiligen Station über den gesamten gespeicherten Zeitraum (seit 2020) dargestellt.</li>
+      <li>Einordnung 2022: <a href="https://www.meteoschweiz.admin.ch/service-und-publikationen/publikationen/berichte-und-bulletins/2022/klimabulletin-sommer-2022.html" rel="noopener">MeteoSchweiz, Klimabulletin Sommer 2022</a> und <a href="https://www.bafu.admin.ch/de/hitze-und-trockenheit-im-sommer-2022" rel="noopener">BAFU, Hitze und Trockenheit im Sommer 2022</a>.</li>
     </ul>
   </div>
 </section>

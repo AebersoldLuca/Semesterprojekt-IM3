@@ -282,7 +282,7 @@ table { border-collapse: collapse; width: 100%; font-size: .88rem; }
 th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; font-variant-numeric: tabular-nums; }
 th:first-child, td:first-child { text-align: left; }
 thead th { color: var(--ink-muted); font-weight: 600; font-size: .8rem; }
-td .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 8px; }
+td .key, th .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 8px; }
 
 /* Badetage – sequentielle Tabelle */
 .heat-table td { text-align: center; font-weight: 600; min-width: 3.2em; }
@@ -418,6 +418,72 @@ td .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; v
 .tooltip-dock__hint { margin: 0; color: var(--ink-2); }
 .tooltip-dock .tooltip__row:first-of-type { border-top: 0; }
 
+/* ---------- Jahresvergleich 2022 vs. 2026 ---------------------- */
+:root { --year-ref: #8f8d86; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --year-ref: #8a8983; } }
+:root[data-theme="dark"] { --year-ref: #8a8983; }
+
+.year-key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin: 0 6px 3px 2px; }
+.year-key--ref { background: var(--year-ref); }
+.year-key--cur { background: linear-gradient(90deg, var(--series-2), var(--series-4), var(--series-6)); }
+
+/* Kleine Vielfache: eine Grafik pro Fluss, gruppiert nach Region */
+.multiples { display: flex; flex-direction: column; gap: 22px; margin-top: 6px; }
+.multiples__group-title {
+  font-size: .78rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-muted); margin: 0 0 8px;
+}
+.multiples__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 22px; }
+.multiple__title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: .95rem; margin: 0 0 2px; }
+.multiple__title .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.multiple__sub { color: var(--ink-muted); font-size: .8rem; margin: 0 0 4px; }
+.chart--multiple { height: 210px; }
+.line--ref { fill: none; stroke: var(--year-ref); stroke-width: 1.5; }
+.year-label { font-size: 11px; font-weight: 650; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.year-label--ref { fill: var(--year-ref); }
+.cutoff-line { stroke: var(--axis); stroke-width: 1; }
+.cutoff-label { fill: var(--ink-muted); font-size: 10px; }
+
+/* Hantel-Diagramm (2022 → 2026) */
+.chart--dumbbell { height: auto; }
+.dumbbell-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .85rem; color: var(--ink-2); margin: 0 0 6px; }
+.dumbbell-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; }
+.dot--ref  { background: var(--surface); border: 2px solid var(--year-ref); }
+.dot--cur  { background: var(--ink); }
+.dot--past { background: var(--axis); width: 9px; height: 9px; }
+.db-ref { fill: var(--surface); stroke: var(--year-ref); stroke-width: 2; }
+.db-link { stroke: var(--axis); stroke-width: 2; }
+.db-group { fill: var(--ink-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.db-delta { font-size: 12px; font-weight: 650; fill: var(--ink); font-variant-numeric: tabular-nums; }
+.db-row-hit { fill: transparent; }
+.ytd-dot--ref { fill: var(--surface); stroke: var(--year-ref); stroke-width: 2; }
+
+/* Urteil zur Hypothese */
+.verdict { margin-top: 2.4rem; }
+.verdict__box {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: clamp(16px, 3vw, 28px);
+}
+.verdict__box h3 { font-size: 1.35rem; margin-bottom: .4em; }
+.verdict__lead { font-family: var(--font-serif); font-size: 1.15rem; line-height: 1.5; margin-bottom: 1.2em; }
+.verdict table td, .verdict table th { white-space: normal; text-align: left; }
+.verdict table td:last-child, .verdict table thead th:last-child { text-align: right; }
+.verdict tbody th[scope="row"] { font-weight: 500; }
+.verdict td.yes, .verdict td.no { font-weight: 650; }
+.mark { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; margin-right: 6px; vertical-align: -4px; color: #fff; }
+.mark--yes { background: #0ca30c; }
+.mark--no  { background: #898781; }
+.verdict tr.group-row th { text-align: left; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); padding-top: 14px; }
+
+/* Stationen nach Gruppe */
+.station-group + .station-group { margin-top: 1.4rem; }
+.station-group__title { font-size: .8rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-muted); margin: 1rem 0 .6rem; }
+
+/* Hervorgehobene Jahre in der Badetage-Tabelle */
+.heat-table th.is-focus { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.heat-table td.is-focus { box-shadow: inset 0 0 0 2px var(--ink); }
+
 /* Dezente Einblend-Animation beim Scrollen */
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
 .reveal.is-visible { opacity: 1; transform: none; }
@@ -429,6 +495,7 @@ td .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; v
 /* ---------- 6) Responsive --------------------------------------- */
 @media (max-width: 900px) {
   .cards--3, .station-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .multiples__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pipeline li:nth-child(3)::after { display: none; }
   .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -436,7 +503,7 @@ td .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; v
 
 @media (max-width: 640px) {
   body { font-size: 1rem; }
-  .cards--3, .station-list, .insights { grid-template-columns: minmax(0, 1fr); }
+  .cards--3, .station-list, .insights, .multiples__grid { grid-template-columns: minmax(0, 1fr); }
   .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pipeline li::after { display: none; }
   .facts { grid-template-columns: minmax(0, 1fr); }

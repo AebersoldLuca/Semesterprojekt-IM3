@@ -6,15 +6,19 @@
    Dieses Script ruft AUSSCHLIESSLICH unload.php auf (eigene Datenbank).
    Die BAFU-API wird im Frontend nie verwendet.
 
+   Hypothese der Story:
+     «2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger
+      Wasser als im Hitzesommer 2022.»
+
    Aufbau:
      0) Konfiguration & Hilfsfunktionen
      1) Datenabruf (unload.php)
      2) Start & Zustand
-     3) Story-Texte (Hero, Stationen, Erkenntnisse, Methodik)
-     4) Hauptgrafik: Zeitverlauf
-     5) Jahresgang
+     3) Story-Texte (Stationen, Methodik)
+     4) Hypothese: 2022 vs. 2026 (Kleine Vielfache, Hantel-Diagramme, Urteil)
+     5) Explorer: Zeitverlauf aller Flüsse
      6) Badetage-Tabelle
-     7) Jahresvergleich
+     7) Jahresvergleich aller Jahre
      8) Tooltip, Resize, Animationen
    ================================================================== */
 
@@ -23,6 +27,18 @@
 /* ---------- 0) Konfiguration & Hilfsfunktionen ------------------- */
 
 const UNLOAD_URL = 'unload.php';
+
+/** Die zwei verglichenen Jahre der Hypothese */
+const YEARS = { ref: 2022, cur: 2026 };
+
+/**
+ * Redaktionelle Einteilung der Stationen (BAFU-Nummern):
+ * Die Hypothese betrifft das Mittelland, die Alpenflüsse dienen als Vergleich.
+ */
+const GROUPS = [
+  { key: 'mittelland', title: 'Mittelland', stations: ['2243', '2044', '2091'] },
+  { key: 'alpen', title: 'Alpen – zum Vergleich', stations: ['2019', '2009', '2068'] },
+];
 
 const PARAM_INFO = {
   WT: { label: 'Wassertemperatur', unit: '°C', axis: 'in °C' },
@@ -134,9 +150,9 @@ function setStatus(id, message) {
 const state = {
   stations: [],          // aus type=stations
   meta: null,            // aus type=meta
-  insights: null,        // aus type=insights
+  insights: null,        // aus type=insights (Einordnung aller Jahre, Stationskarten)
+  compare: { data: null, parameter: 'WT', smooth: 7 }, // aus type=compare (Hypothese)
   ts: { parameter: 'WT', days: '365', hidden: new Set(), data: null, request: 0 },
-  season: { parameter: 'WT', data: null },
   ytd: { parameter: 'WT' },
 };
 
@@ -144,9 +160,10 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   setupReveal();
+  setupSegmented('cmp-param-switch', 'param', (v) => { state.compare.parameter = v; renderMultiples(); });
+  setupSegmented('cmp-smooth-switch', 'smooth', (v) => { state.compare.smooth = Number(v); renderMultiples(); });
   setupSegmented('param-switch', 'param', (v) => { state.ts.parameter = v; renderTimeseries(); });
   setupSegmented('range-switch', 'days', (v) => { state.ts.days = v; loadTimeseries(); });
-  setupSegmented('season-param-switch', 'param', (v) => { state.season.parameter = v; loadSeasonal(); });
   setupSegmented('ytd-param-switch', 'param', (v) => { state.ytd.parameter = v; renderYtd(); });
 
   // Stationen + Metadaten zuerst: sie werden überall gebraucht
@@ -163,20 +180,19 @@ async function init() {
     return;
   }
 
-  renderStationList();
+  renderStationGroups();
   renderLegend();
   renderMeta();
+  loadCompare();
   loadTimeseries();
-  loadSeasonal();
 
   try {
     state.insights = await unload({ type: 'insights' });
-    renderInsights();
     renderHeatTable();
     renderYtd();
     renderStationNow();
   } catch (err) {
-    document.getElementById('insights').replaceChildren(el('p', { class: 'muted' }, err.message));
+    document.getElementById('heat-note').textContent = err.message;
   }
 
   setupResize();
@@ -187,9 +203,9 @@ function fatal(err) {
   showToast(err.message);
   const msg = `Die Daten sind momentan nicht verfügbar: ${err.message}`;
   setStatus('ts-status', msg);
-  setStatus('season-status', msg);
-  document.getElementById('station-list').replaceChildren(el('li', { class: 'station-list__placeholder' }, msg));
-  document.getElementById('insights').replaceChildren(el('p', { class: 'muted' }, msg));
+  for (const id of ['station-groups', 'cmp-multiples', 'verdict']) {
+    document.getElementById(id).replaceChildren(el('p', { class: 'muted' }, msg));
+  }
 }
 
 /** Segmented Control (Radiogruppe) mit Tastatursteuerung */
@@ -220,14 +236,16 @@ function stationByNo(no) {
   return state.stations.find((s) => s.station_no === no);
 }
 
-function renderStationList() {
-  const list = document.getElementById('station-list');
-  list.replaceChildren(...state.stations.map((s) => el('li', { class: 'station', style: `--c:${colorOf(s)}`, 'data-station': s.station_no },
+/** Stationskarten, gruppiert nach Mittelland / Alpen */
+function renderStationGroups() {
+  const card = (s) => el('li', { class: 'station', style: `--c:${colorOf(s)}`, 'data-station': s.station_no },
     el('div', { class: 'station__river' }, s.river_name),
     el('div', { class: 'station__site' }, `${s.name} · ${s.catchment_name ?? ''} · BAFU ${s.station_no}`),
     el('p', { class: 'station__role' }, s.story_role ?? ''),
-    el('div', { class: 'station__now' }, el('span', {}, 'Aktuelle Werte werden geladen …')),
-  )));
+    el('div', { class: 'station__now' }, el('span', {}, 'Aktuelle Werte werden geladen …')));
+  document.getElementById('station-groups').replaceChildren(...GROUPS.map((group) => el('div', { class: 'station-group' },
+    el('p', { class: 'station-group__title' }, group.title),
+    el('ul', { class: 'station-list' }, state.stations.filter((s) => group.stations.includes(s.station_no)).map(card)))));
 }
 
 /** Jüngste Werte in den Stationskarten (aus type=insights) */
@@ -285,103 +303,417 @@ function renderMeta() {
   setSlot('limits-years', `Rund ${fmt1(years)} Jahre Daten`);
 }
 
-/** Erkenntnisse – jede Zahl stammt aus type=insights (also aus MySQL). */
-function renderInsights() {
-  const ins = state.insights;
-  const st = ins.stations.map((s) => ({ ...s, meta: stationByNo(s.station_no) })).filter((s) => s.meta);
-  const withWT = st.filter((s) => s.WT.max);
-
-  // --- Hero: wärmstes Tagesmittel vs. kältester Fluss ----------------
-  const warm = withWT.reduce((a, b) => (b.WT.max.value > a.WT.max.value ? b : a));
-  const cold = withWT.reduce((a, b) => (b.WT.max.value < a.WT.max.value ? b : a));
-  setSlot('hero-warm-value', fmtTemp(warm.WT.max.value));
-  setSlot('hero-warm-label', [keySwatch(warm.meta, 'key'), `${warm.display_name}: wärmstes Tagesmittel aller sechs Flüsse (${longDate(warm.WT.max.date)})`]);
-  setSlot('hero-cold-value', fmtTemp(cold.WT.max.value));
-  setSlot('hero-cold-label', [keySwatch(cold.meta, 'key'), `${cold.display_name}: wärmer wurde dieser Fluss nie (${longDate(cold.WT.max.date)})`]);
-
-  const cards = [];
-
-  // --- Karte 1: Unterschied im Sommer ------------------------------
-  const seasonWT = st.filter((s) => s.WT.season);
-  if (seasonWT.length > 1) {
-    const hot = seasonWT.reduce((a, b) => (b.WT.season.high > a.WT.season.high ? b : a));
-    const cool = seasonWT.reduce((a, b) => (b.WT.season.high < a.WT.season.high ? b : a));
-    const diff = hot.WT.season.high - cool.WT.season.high;
-    cards.push(insightCard(
-      `${fmt0(diff)} Grad`, 'Unterschied im Hochsommer',
-      [keySwatch(hot.meta), `${hot.display_name} ist im ${MONTHS[hot.WT.season.high_month - 1]} im Mittel ${fmtTemp(hot.WT.season.high)} warm, `,
-        keySwatch(cool.meta), `${cool.display_name} in ihrem wärmsten Monat (${MONTHS[cool.WT.season.high_month - 1]}) nur ${fmtTemp(cool.WT.season.high)}. `,
-        `Grundlage: Monatsmittel der Jahre ${ins.complete_years[0]}–${ins.complete_years[1]}.`],
-    ));
-  }
-
-  // --- Karte 2: Grösster Pegelbereich ------------------------------
-  const seasonW = st.filter((s) => s.W.season);
-  if (seasonW.length > 1) {
-    const big = seasonW.reduce((a, b) => (b.W.season.amplitude > a.W.season.amplitude ? b : a));
-    const flat = seasonW.reduce((a, b) => (b.W.season.amplitude < a.W.season.amplitude ? b : a));
-    cards.push(insightCard(
-      `${fmt0(big.W.season.amplitude)} cm`, 'So stark hebt und senkt sich der Pegel übers Jahr',
-      [keySwatch(big.meta), `${big.display_name}: Im ${MONTHS[big.W.season.high_month - 1]} steht der Fluss im Mittel ${fmtCm(big.W.season.high)} über, im ${MONTHS[big.W.season.low_month - 1]} ${fmtCm(big.W.season.low).replace('−', '')} unter dem mittleren Pegel. `,
-        keySwatch(flat.meta), `${flat.display_name} schwankt im Monatsmittel nur um ${fmt0(flat.W.season.amplitude)} cm.`],
-    ));
-  }
-
-  // --- Karte 3: Tage über 20 °C ------------------------------------
-  const lastComplete = ins.complete_years ? ins.complete_years[1] : null;
-  if (lastComplete) {
-    const rows = st.map((s) => ({ s, y: s.WT.by_year.find((y) => y.year === lastComplete) })).filter((r) => r.y);
-    const top = rows.reduce((a, b) => (b.y.days_ge_20 > a.y.days_ge_20 ? b : a));
-    const none = rows.filter((r) => r.y.days_ge_20 === 0).map((r) => r.s.river_name);
-    cards.push(insightCard(
-      `${fmt0(top.y.days_ge_20)} Tage`, `mit mindestens 20 °C im Jahr ${lastComplete}`,
-      [keySwatch(top.s.meta), `${top.s.display_name} lag ${lastComplete} an ${fmt0(top.y.days_ge_20)} Tagen im Tagesmittel bei 20 °C oder mehr. `,
-        none.length ? `${listJoin(none)} erreichte${none.length > 1 ? 'n' : ''} diesen Wert ${lastComplete} an keinem einzigen Tag.` : ''],
-    ));
-  }
-
-  // --- Karte 4: das laufende Jahr im Vergleich ---------------------
-  const currentYear = Number(ins.latest_date.slice(0, 4));
-  const cutoff = longDate(ins.latest_date).replace(/ \d{4}$/, '');
-  const rank = (s, key, dir) => {
-    const years = s.ytd.filter((y) => y[key] != null);
-    const cur = years.find((y) => y.year === currentYear);
-    if (!cur || years.length < 3) return null;
-    const better = years.filter((y) => (dir === 'max' ? y[key] > cur[key] : y[key] < cur[key])).length;
-    return { rank: better + 1, of: years.length };
-  };
-  const warmest = st.filter((s) => rank(s, 'WT', 'max')?.rank === 1);
-  const lowest = st.filter((s) => rank(s, 'W', 'min')?.rank === 1);
-  const yearsCount = st[0]?.ytd.length ?? 0;
-  cards.push(insightCard(
-    `${warmest.length} von ${st.length}`, `Flüssen so warm wie nie seit ${st[0]?.ytd[0]?.year ?? ''}`,
-    [`Vergleicht man jeweils den 1. Januar bis ${cutoff}, war das Wasser ${currentYear} bei `,
-      warmest.length ? listJoin(warmest.map((s) => s.river_name)) : 'keinem Fluss',
-      ` im Mittel wärmer als in allen ${yearsCount - 1} Vorjahren. `,
-      lowest.length ? `Den tiefsten mittleren Pegel dieses Zeitraums hatten ${currentYear} ${listJoin(lowest.map((s) => s.river_name))}. ` : '',
-      'Das ist eine Beobachtung über wenige Jahre – kein Beleg für einen Trend.'],
-  ));
-
-  document.getElementById('insights').replaceChildren(...cards);
-
-  // Einleitungstexte
-  setSlot('ytd-intro', `Jedes Jahr wird nur vom 1. Januar bis ${cutoff} gemittelt – so lässt sich ${currentYear} fair mit den Vorjahren vergleichen. Farbig: ${currentYear}, grau: frühere Jahre.`);
-  document.getElementById('ytd-title').textContent = `Wie aussergewöhnlich ist ${currentYear}?`;
-}
-
-function insightCard(number, title, body) {
-  return el('article', { class: 'insight reveal is-visible' },
-    el('div', { class: 'insight__number' }, number),
-    el('h3', {}, title),
-    el('p', {}, body));
-}
-
 function listJoin(items) {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} und ${items[items.length - 1]}`;
 }
 
-/* ---------- 4) Hauptgrafik: Zeitverlauf -------------------------- */
+/* ---------- 4) Hypothese: 2022 vs. 2026 -------------------------- */
+
+/** Liest den Jahresvergleich aus unload.php (type=compare) */
+async function loadCompare() {
+  try {
+    state.compare.data = await unload({ type: 'compare', years: `${YEARS.ref},${YEARS.cur}` });
+  } catch (err) {
+    const msg = `Der Jahresvergleich konnte nicht geladen werden: ${err.message}`;
+    document.getElementById('cmp-multiples').replaceChildren(el('p', { class: 'muted' }, msg));
+    document.getElementById('verdict').replaceChildren(el('p', { class: 'muted' }, msg));
+    return;
+  }
+  renderCompareTexts();
+  renderMultiples();
+  renderDumbbells();
+  renderFindings();
+  renderVerdict();
+}
+
+/** Stationen des Vergleichs mit Stammdaten und Kennzahlen beider Jahre */
+function cmpStations() {
+  return state.compare.data.stations
+    .map((s) => ({ ...s, station: stationByNo(s.station_no), ref: s.years[YEARS.ref], cur: s.years[YEARS.cur] }))
+    .filter((s) => s.station && s.ref && s.cur);
+}
+
+const groupOf = (no) => GROUPS.find((g) => g.stations.includes(no));
+const inGroup = (key) => cmpStations().filter((s) => groupOf(s.station_no)?.key === key);
+
+/** Stichtag «MM-DD» → «27. September» */
+function cutoffLabel() {
+  return longDate(`${YEARS.cur}-${state.compare.data.cutoff}`).replace(/ \d{4}$/, '');
+}
+
+/** Hero, Einleitungen und Grenzen – alle Zahlen aus type=compare */
+function renderCompareTexts() {
+  const cutoff = cutoffLabel();
+  setSlot('year-ref', String(YEARS.ref));
+  setSlot('year-cur', String(YEARS.cur));
+  setSlot('test-intro', `Verglichen wird in beiden Jahren derselbe Zeitraum: 1. Januar bis ${cutoff}. So hat 2022 keinen Vorsprung durch den Herbst, der 2026 noch fehlt.`);
+  setSlot('db-wt-title', `Mittlere Wassertemperatur, 1. Januar bis ${cutoff}`);
+  setSlot('db-w-title', `Mittlerer Wasserstand, 1. Januar bis ${cutoff}`);
+  setSlot('cutoff-text', `${cutoff} ${YEARS.cur}`);
+
+  const shares = cmpStations().map((s) => s.cur.summary.checked_share).filter((v) => v != null);
+  if (shares.length) {
+    const lo = fmt0(d3.min(shares) * 100);
+    const hi = fmt0(d3.max(shares) * 100);
+    setSlot('checked-text', `Je nach Station sind erst ${lo} bis ${hi} % der Werte von ${YEARS.cur} geprüft, der Rest`);
+  }
+
+  // Hero: stärkster Anstieg der warmen Tage und tiefster Pegel im Mittelland
+  const ml = inGroup('mittelland');
+  const warmer = ml.filter((s) => s.cur.summary.days_ge_20 != null && s.ref.summary.days_ge_20 != null);
+  if (warmer.length) {
+    const top = warmer.reduce((a, b) =>
+      (b.cur.summary.days_ge_20 - b.ref.summary.days_ge_20 > a.cur.summary.days_ge_20 - a.ref.summary.days_ge_20 ? b : a));
+    setSlot('hero-a-value', `${fmt0(top.cur.summary.days_ge_20)} Tage`);
+    setSlot('hero-a-label', [keySwatch(top.station, 'key'),
+      `${top.display_name}: Tage mit mindestens 20 °C, 1. Januar bis ${cutoff} ${YEARS.cur}. ${YEARS.ref} waren es ${fmt0(top.ref.summary.days_ge_20)}.`]);
+  }
+  const lower = ml.filter((s) => s.cur.summary.w_mean_cm != null);
+  if (lower.length) {
+    const low = lower.reduce((a, b) => (b.cur.summary.w_mean_cm < a.cur.summary.w_mean_cm ? b : a));
+    setSlot('hero-b-value', fmtCm(low.cur.summary.w_mean_cm));
+    setSlot('hero-b-label', [keySwatch(low.station, 'key'),
+      `${low.display_name}: mittlerer Pegel ${YEARS.cur} gegenüber dem Durchschnitt seit 2020. ${YEARS.ref}: ${fmtCm(low.ref.summary.w_mean_cm)}.`]);
+  }
+}
+
+/**
+ * Tageswerte eines Jahres → Punkte für die Grafik. Die x-Position ist der
+ * Kalendertag in einem neutralen Schaltjahr (2000), damit beide Jahre
+ * übereinanderliegen. Optional gleitendes Mittel über die letzten 7 Tage
+ * (mindestens 4 Werte im Fenster, sonst Lücke). Nichts wird aufgefüllt.
+ */
+function yearPoints(rows, year, col, smooth) {
+  const pts = rows
+    .filter((r) => r[col] != null)
+    .map((r) => {
+      const [mm, dd] = r[0].split('-').map(Number);
+      return { real: Date.UTC(year, mm - 1, dd), x: new Date(Date.UTC(2000, mm - 1, dd)), md: r[0], raw: r[col] };
+    });
+  const day = 864e5;
+  let start = 0;
+  pts.forEach((p, i) => {
+    if (smooth <= 1) { p.value = p.raw; return; }
+    while (pts[start].real < p.real - (smooth - 1) * day) start++;
+    const win = pts.slice(start, i + 1);
+    p.value = win.length >= Math.ceil(smooth / 2) + 1 ? d3.mean(win, (w) => w.raw) : null;
+  });
+  // Lücken: fehlende Tage unterbrechen die Linie
+  const out = [];
+  pts.forEach((p, i) => {
+    if (i > 0 && p.real - pts[i - 1].real > day) out.push({ x: p.x, value: null });
+    out.push(p);
+  });
+  return out;
+}
+
+/** Kleine Vielfache: pro Fluss eine Grafik mit 2022 (grau) und 2026 (farbig) */
+function renderMultiples() {
+  const data = state.compare.data;
+  if (!data) return;
+  const param = state.compare.parameter;
+  const isW = param === 'W';
+  const smooth = state.compare.smooth;
+  const col = isW ? 2 : 1;
+  const f = isW ? fmtCm : fmtTemp;
+  const cutoff = cutoffLabel();
+  const container = document.getElementById('cmp-multiples');
+
+  document.getElementById('cmp-title').textContent = `${isW ? 'Wasserstand' : 'Wassertemperatur'}, ${smooth > 1 ? 'gleitendes 7-Tage-Mittel' : 'Tagesmittel'}`;
+  document.getElementById('cmp-unit').textContent = isW ? 'Abweichung vom mittleren Pegel in cm' : 'in °C';
+  document.getElementById('cmp-note').textContent =
+    `Senkrechte Linie: ${cutoff} – bis hierhin reichen die Daten von ${YEARS.cur}. Alle Grafiken haben dieselbe Skala.` +
+    (smooth > 1 ? ' Das 7-Tage-Mittel glättet kurze Schwankungen; im Tooltip stehen die geglätteten Werte.' : '');
+
+  const series = cmpStations().map((s) => ({
+    ...s,
+    refPts: yearPoints(s.ref.series, YEARS.ref, col, smooth),
+    curPts: yearPoints(s.cur.series, YEARS.cur, col, smooth),
+  }));
+
+  // Gemeinsame Skala für alle Flüsse → ehrlicher Vergleich zwischen den Grafiken
+  const values = series.flatMap((s) => [...s.refPts, ...s.curPts].map((p) => p.value)).filter((v) => v != null);
+  let [yMin, yMax] = d3.extent(values);
+  yMin = Math.min(0, yMin);
+  yMax = Math.max(0, yMax);
+
+  container.replaceChildren(...GROUPS.map((group) => el('div', { class: 'multiples__group' },
+    el('p', { class: 'multiples__group-title' }, group.title),
+    el('div', { class: 'multiples__grid' }, series.filter((s) => group.stations.includes(s.station_no)).map((s) => {
+      const r = s.ref.summary;
+      const c = s.cur.summary;
+      const a = isW ? r.w_mean_cm : r.wt_mean;
+      const b = isW ? c.w_mean_cm : c.wt_mean;
+      return el('div', { class: 'multiple' },
+        el('p', { class: 'multiple__title' }, keySwatch(s.station, 'key'), s.display_name),
+        el('p', { class: 'multiple__sub' }, a != null && b != null
+          ? `Mittel bis ${cutoff}: ${YEARS.ref} ${f(a)} · ${YEARS.cur} ${f(b)}` : 'keine Daten'),
+        el('div', { class: 'chart chart--multiple', tabindex: '0', 'data-station': s.station_no,
+          'aria-label': `${s.display_name}: ${isW ? 'Wasserstand' : 'Wassertemperatur'} ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` }));
+    })))));
+
+  for (const s of series) {
+    const chart = container.querySelector(`.chart--multiple[data-station="${s.station_no}"]`);
+    drawMultiple(chart, s, { yMin, yMax, isW, f });
+  }
+}
+
+function drawMultiple(chart, s, { yMin, yMax, isW, f }) {
+  const width = chart.clientWidth;
+  const height = chart.clientHeight;
+  const m = { top: 10, right: 34, bottom: 24, left: 36 };
+  const innerW = width - m.left - m.right;
+  const innerH = height - m.top - m.bottom;
+  if (innerW < 50 || innerH < 50) return;
+
+  const x = d3.scaleUtc().domain([new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, 11, 31))]).range([0, innerW]);
+  const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([innerH, 0]);
+
+  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(width < 330 ? 3 : 2)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')))
+    .call((a) => a.selectAll('.tick line').attr('y2', 3));
+  g.append('g').attr('class', 'axis axis--y')
+    .call(d3.axisLeft(y).ticks(4).tickSize(-innerW).tickFormat((v) => (isW ? fmtSigned(v) : fmt0(v))))
+    .call((a) => a.selectAll('.tick text').attr('x', -6));
+  g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
+
+  // Stichtag: bis hierhin wird verglichen
+  const [mm, dd] = state.compare.data.cutoff.split('-').map(Number);
+  const cx = x(new Date(Date.UTC(2000, mm - 1, dd)));
+  g.append('line').attr('class', 'cutoff-line').attr('x1', cx).attr('x2', cx).attr('y1', 0).attr('y2', innerH);
+
+  const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value));
+  g.append('path').attr('class', 'line--ref').attr('d', line(s.refPts));
+  g.append('path').attr('class', 'series-line').style('stroke', colorOf(s.station)).attr('d', line(s.curPts));
+
+  // Direkte Beschriftung am Linienende
+  const lastOf = (pts) => [...pts].reverse().find((p) => p.value != null);
+  const lr = lastOf(s.refPts);
+  const lc = lastOf(s.curPts);
+  if (lr) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(lr.x) + 4).attr('y', y(lr.value)).attr('dy', '0.35em').text(YEARS.ref);
+  if (lc) g.append('text').attr('class', 'year-label').style('fill', colorOf(s.station)).attr('x', x(lc.x) + 4).attr('y', y(lc.value)).attr('dy', '0.35em').text(YEARS.cur);
+
+  // Crosshair über alle Kalendertage, an denen mindestens ein Jahr einen Wert hat
+  const refBy = new Map(s.refPts.filter((p) => p.value != null).map((p) => [+p.x, p]));
+  const curBy = new Map(s.curPts.filter((p) => p.value != null).map((p) => [+p.x, p]));
+  const days = [...new Set([...refBy.keys(), ...curBy.keys()])].sort((a, b) => a - b);
+  const fmtDay = locale.utcFormat('%-d. %B');
+
+  attachCrosshair({
+    chart, g, innerW, innerH, margin: m, dockHint: false,
+    positions: days.map((d) => x(d)),
+    render(i, hover) {
+      const d = days[i];
+      const pr = refBy.get(d);
+      const pc = curBy.get(d);
+      const dots = [pr && { p: pr, fill: 'var(--year-ref)' }, pc && { p: pc, fill: colorOf(s.station) }].filter(Boolean);
+      hover.selectAll('circle').data(dots).join('circle').attr('class', 'hover-dot').attr('r', 4.5)
+        .style('fill', (o) => o.fill).attr('cx', x(d)).attr('cy', (o) => y(o.p.value));
+      const row = (label, key, p) => el('div', { class: 'tooltip__row' },
+        el('span', { class: 'tooltip__key', style: `background:${key}` }),
+        el('span', { class: 'tooltip__name' }, label),
+        el('span', { class: 'tooltip__value' }, p ? f(p.value) : 'kein Wert'));
+      const diff = pr && pc ? pc.value - pr.value : null;
+      return el('div', {},
+        el('div', { class: 'tooltip__date' }, `${s.station.river_name}, ${fmtDay(new Date(d))}`),
+        row(String(YEARS.ref), 'var(--year-ref)', pr),
+        row(String(YEARS.cur), colorOf(s.station), pc),
+        diff != null ? el('div', { class: 'tooltip__row' }, el('span', {}), el('span', { class: 'tooltip__name' }, 'Differenz'),
+          el('span', { class: 'tooltip__value' }, isW ? fmtCm(diff) : `${fmtSigned(diff, 1)} °C`)) : null);
+    },
+    label: (i) => fmtDay(new Date(days[i])),
+  });
+}
+
+/** Beide Hantel-Diagramme zeichnen */
+function renderDumbbells() {
+  if (!state.compare.data) return;
+  drawDumbbell('db-wt-chart', 'wt_mean', fmtTemp, (d) => `${fmtSigned(d, 1)} °C`);
+  drawDumbbell('db-w-chart', 'w_mean_cm', fmtCm, (d) => `${fmtSigned(d)} cm`);
+  document.getElementById('db-wt-note').textContent =
+    `Mittel aller Tageswerte vom 1. Januar bis ${cutoffLabel()}. Rechts: Veränderung ${YEARS.ref} → ${YEARS.cur}. Die Achse beginnt nicht bei 0 °C, weil hier Positionen verglichen werden, nicht Längen.`;
+  document.getElementById('db-w-note').textContent =
+    `Mittlerer Pegel vom 1. Januar bis ${cutoffLabel()}, als Abweichung vom Durchschnitt der Station seit 2020. Weiter links = tieferer Wasserstand.`;
+}
+
+/**
+ * Hantel-Diagramm: pro Fluss ein hohler Punkt (2022) und ein gefüllter Punkt
+ * (2026), verbunden durch eine Linie. Gruppiert nach Mittelland / Alpen.
+ */
+function drawDumbbell(chartId, key, f, fDelta) {
+  const chart = document.getElementById(chartId);
+  const width = chart.clientWidth;
+  const small = width < 560;
+  const rowH = 38;
+  const groupH = 28;
+  const m = { top: 4, right: small ? 70 : 90, bottom: 30, left: small ? 72 : 160 };
+  const innerW = width - m.left - m.right;
+  if (innerW < 50) return;
+
+  // Zeilen aufbauen: Gruppentitel + Stationen
+  const rows = [];
+  let yPos = 0;
+  for (const group of GROUPS) {
+    rows.push({ type: 'group', title: group.title, y: yPos + groupH - 8 });
+    yPos += groupH;
+    for (const s of cmpStations().filter((c) => group.stations.includes(c.station_no))) {
+      const a = s.ref.summary[key];
+      const b = s.cur.summary[key];
+      if (a == null || b == null) continue;
+      rows.push({ type: 'station', s, a, b, y: yPos + rowH / 2 });
+      yPos += rowH;
+    }
+  }
+  const innerH = yPos;
+  const height = m.top + innerH + m.bottom;
+  const vals = rows.filter((r) => r.type === 'station').flatMap((r) => [r.a, r.b]);
+  const domain = d3.extent(key === 'w_mean_cm' ? [...vals, 0] : vals);
+  const x = d3.scaleLinear().domain(domain).nice().range([0, innerW]);
+
+  const svg = d3.select(chart).selectAll('svg').data([null]).join('svg')
+    .attr('width', width).attr('height', height).attr('role', 'img')
+    .attr('aria-label', `Vergleich ${YEARS.ref} und ${YEARS.cur} pro Fluss`);
+  svg.selectAll('*').remove();
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+  g.append('g').attr('class', 'axis axis--y').attr('transform', `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).ticks(small ? 4 : 6).tickSize(-innerH).tickFormat((v) => (key === 'w_mean_cm' ? fmtSigned(v) : fmt0(v))))
+    .call((a) => a.selectAll('.tick text').attr('dy', '1.2em'));
+  if (key === 'w_mean_cm') {
+    g.append('line').attr('class', 'baseline').attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', innerH);
+  }
+
+  const tooltip = getTooltip(chart);
+  for (const r of rows) {
+    if (r.type === 'group') {
+      g.append('text').attr('class', 'db-group').attr('x', -m.left + 4).attr('y', r.y).text(r.title);
+      continue;
+    }
+    const row = g.append('g');
+    row.append('text').attr('class', 'ytd-row-label').attr('x', -12).attr('y', r.y).attr('dy', '0.35em').attr('text-anchor', 'end')
+      .text(small ? r.s.station.river_name : r.s.display_name);
+    row.append('line').attr('class', 'db-link').attr('x1', x(r.a)).attr('x2', x(r.b)).attr('y1', r.y).attr('y2', r.y);
+    row.append('circle').attr('class', 'db-ref').attr('r', 6).attr('cx', x(r.a)).attr('cy', r.y);
+    row.append('circle').attr('class', 'ytd-dot').attr('r', 7).attr('cx', x(r.b)).attr('cy', r.y).style('fill', colorOf(r.s.station));
+    row.append('text').attr('class', 'db-delta').attr('x', innerW + 12).attr('y', r.y).attr('dy', '0.35em').text(fDelta(r.b - r.a));
+
+    // Grosse, unsichtbare Trefferfläche für Hover/Touch
+    row.append('rect').attr('class', 'db-row-hit').attr('x', -m.left).attr('y', r.y - rowH / 2)
+      .attr('width', width).attr('height', rowH)
+      .on('pointerenter pointerdown', () => {
+        tooltip.show(el('div', {},
+          el('div', { class: 'tooltip__date' }, r.s.display_name),
+          el('div', { class: 'tooltip__row' }, el('span', { class: 'tooltip__key', style: 'background:var(--year-ref)' }),
+            el('span', { class: 'tooltip__name' }, String(YEARS.ref)), el('span', { class: 'tooltip__value' }, f(r.a))),
+          el('div', { class: 'tooltip__row' }, el('span', { class: 'tooltip__key', style: `background:${colorOf(r.s.station)}` }),
+            el('span', { class: 'tooltip__name' }, String(YEARS.cur)), el('span', { class: 'tooltip__value' }, f(r.b))),
+          el('div', { class: 'tooltip__row' }, el('span', {}), el('span', { class: 'tooltip__name' }, 'Veränderung'),
+            el('span', { class: 'tooltip__value' }, fDelta(r.b - r.a)))),
+        Math.max(x(r.a), x(r.b)) + m.left, r.y + m.top);
+      })
+      .on('pointerleave', () => tooltip.hide());
+  }
+}
+
+/** Befund-Texte unter den Hantel-Diagrammen */
+function renderFindings() {
+  const cutoff = cutoffLabel();
+  const ml = inGroup('mittelland');
+  const al = inGroup('alpen');
+  const d = (s, k) => s.cur.summary[k] - s.ref.summary[k];
+  const list = (arr, k, fd) => listJoin(arr.map((s) => `${s.river_name} ${fd(d(s, k))}`));
+  const t = (v) => `${fmtSigned(v, 1)} °C`;
+  const c = (v) => `${fmtSigned(v)} cm`;
+
+  // Wassertemperatur
+  const mlWarm = ml.filter((s) => d(s, 'wt_mean') > 0);
+  const hot = ml.filter((s) => s.cur.summary.days_ge_25 != null)
+    .reduce((a, b) => (!a || b.cur.summary.days_ge_25 - b.ref.summary.days_ge_25 > a.cur.summary.days_ge_25 - a.ref.summary.days_ge_25 ? b : a), null);
+  const pWt = [el('p', {},
+    mlWarm.length === ml.length
+      ? `In allen drei Mittelland-Flüssen war das Wasser ${YEARS.cur} bis ${cutoff} im Mittel wärmer als ${YEARS.ref}: `
+      : `Nicht in allen Mittelland-Flüssen war das Wasser ${YEARS.cur} wärmer als ${YEARS.ref}: `,
+    `${list(ml, 'wt_mean', t)}. `,
+    'Im Durchschnitt über ein Dreivierteljahr sind das kleine Unterschiede. ',
+    hot ? `Deutlicher zeigen sie sich bei den heissen Tagen: ${hot.display_name} lag ${YEARS.cur} an ${fmt0(hot.cur.summary.days_ge_25)} Tagen bei 25 °C oder mehr, ${YEARS.ref} an ${fmt0(hot.ref.summary.days_ge_25)}.` : '')];
+  if (al.length) {
+    pWt.push(el('p', {}, `Auch die Alpenflüsse waren ${YEARS.cur} etwas ${al.every((s) => d(s, 'wt_mean') > 0) ? 'wärmer' : 'anders'} (${list(al, 'wt_mean', t)}), `,
+      `bleiben aber deutlich kühler als die Mittelland-Flüsse – passend zum kalten Schmelzwasser aus den Alpen.`));
+  }
+  document.getElementById('finding-wt').replaceChildren(...pWt);
+
+  // Wasserstand
+  const mlLow = ml.filter((s) => d(s, 'w_mean_cm') < 0);
+  const pW = [el('p', {},
+    mlLow.length === ml.length
+      ? `Die Pegel aller drei Mittelland-Flüsse lagen ${YEARS.cur} tiefer als im Trockenjahr ${YEARS.ref}: `
+      : `Nicht alle Mittelland-Flüsse lagen ${YEARS.cur} tiefer als ${YEARS.ref}: `,
+    `${list(ml, 'w_mean_cm', c)} im Mittel bis ${cutoff}.`)];
+  if (al.length) {
+    const alLow = al.filter((s) => d(s, 'w_mean_cm') < 0);
+    pW.push(el('p', {}, `Bei den Alpenflüssen ist das Bild ${alLow.length === 0 || alLow.length === al.length ? 'einheitlich' : 'uneinheitlich'}: ${list(al, 'w_mean_cm', c)}. `,
+      'Ihr Wasserstand hängt stark von Schnee- und Gletscherschmelze ab und folgt deshalb nicht einfach dem Wetter im Mittelland.'));
+  }
+  document.getElementById('finding-w').replaceChildren(...pW);
+}
+
+/** Urteil zur Hypothese – pro Fluss «wärmer?» und «tieferer Pegel?» */
+function renderVerdict() {
+  const cutoff = cutoffLabel();
+  const ml = inGroup('mittelland');
+  const warm = (s) => s.cur.summary.wt_mean > s.ref.summary.wt_mean;
+  const low = (s) => s.cur.summary.w_mean_cm < s.ref.summary.w_mean_cm;
+  const both = ml.filter((s) => warm(s) && low(s)).length;
+
+  let title;
+  let lead;
+  if (both === ml.length) {
+    title = 'Urteil: Hypothese bestätigt – mit Vorbehalt';
+    lead = `Alle drei Mittelland-Flüsse waren ${YEARS.cur} bis ${cutoff} im Mittel wärmer und hatten einen tieferen Wasserstand als im Hitzesommer ${YEARS.ref}.`;
+  } else if (both > 0 || ml.some((s) => warm(s) || low(s))) {
+    title = 'Urteil: Hypothese teilweise bestätigt';
+    lead = `Nur ${both} von ${ml.length} Mittelland-Flüssen waren ${YEARS.cur} sowohl wärmer als auch tiefer als ${YEARS.ref}.`;
+  } else {
+    title = 'Urteil: Hypothese nicht bestätigt';
+    lead = `Keiner der Mittelland-Flüsse war ${YEARS.cur} bis ${cutoff} wärmer und tiefer als ${YEARS.ref}.`;
+  }
+
+  const mark = (ok, text) => el('td', { class: ok ? 'yes' : 'no' },
+    el('span', { class: `mark mark--${ok ? 'yes' : 'no'}`, 'aria-hidden': 'true' }, ok ? '✓' : '–'), `${ok ? 'ja' : 'nein'} (${text})`);
+  const body = [];
+  for (const group of GROUPS) {
+    body.push(el('tr', { class: 'group-row' }, el('th', { colspan: '4', scope: 'rowgroup' }, group.title)));
+    for (const s of inGroup(group.key)) {
+      const dT = s.cur.summary.wt_mean - s.ref.summary.wt_mean;
+      const dW = s.cur.summary.w_mean_cm - s.ref.summary.w_mean_cm;
+      body.push(el('tr', {},
+        el('th', { scope: 'row' }, el('span', { class: 'key', style: `background:${colorOf(s.station)}` }), s.display_name),
+        mark(warm(s), `${fmtSigned(dT, 1)} °C`),
+        mark(low(s), `${fmtSigned(dW)} cm`),
+        el('td', {}, s.cur.summary.checked_share != null ? `${fmt0(s.cur.summary.checked_share * 100)} %` : '–')));
+    }
+  }
+
+  document.getElementById('verdict').replaceChildren(el('div', { class: 'verdict__box' },
+    el('h3', {}, title),
+    el('p', { class: 'verdict__lead' }, lead),
+    el('div', { class: 'table-scroll' }, el('table', {},
+      el('thead', {}, el('tr', {},
+        el('th', { scope: 'col' }, 'Fluss'),
+        el('th', { scope: 'col' }, `Wärmer als ${YEARS.ref}?`),
+        el('th', { scope: 'col' }, `Tieferer Pegel als ${YEARS.ref}?`),
+        el('th', { scope: 'col' }, `Geprüfte Werte ${YEARS.cur}`))),
+      el('tbody', {}, body))),
+    el('p', { class: 'figure__note' },
+      `Verglichen: Mittelwerte vom 1. Januar bis ${cutoff}. Der Vorbehalt: Ein grosser Teil der Werte von ${YEARS.cur} ist vom BAFU noch nicht geprüft, und das Jahr ist noch nicht zu Ende. `,
+      'Die Alpenflüsse gehören nicht zur Hypothese, sie zeigen aber, dass nicht jeder Fluss gleich auf einen heissen, trockenen Sommer reagiert.')));
+}
+
+/* ---------- 5) Explorer: Zeitverlauf aller Flüsse ---------------- */
 
 /** Legende = Filter: Chips zum Ein- und Ausblenden der Flüsse */
 function renderLegend() {
@@ -404,10 +736,6 @@ function renderLegend() {
     loadTimeseries();
   });
   legend.replaceChildren(...chips, all);
-
-  // Statische Legende für den Jahresgang
-  document.getElementById('season-legend').replaceChildren(...state.stations.map((s) =>
-    el('span', { class: 'chip', style: `--c:${colorOf(s)}` }, el('span', { class: 'chip__key' }), s.display_name)));
 }
 
 /** Holt die Tagesmittel für Auswahl + Zeitraum aus unload.php */
@@ -630,129 +958,6 @@ function renderSummaryTable(series = []) {
   table.replaceChildren(head, body);
 }
 
-/* ---------- 5) Jahresgang ---------------------------------------- */
-
-async function loadSeasonal() {
-  const chart = document.getElementById('season-chart');
-  chart.classList.add('is-loading');
-  try {
-    state.season.data = await unload({ type: 'seasonal', parameter: state.season.parameter });
-    setStatus('season-status', '');
-    renderSeasonal();
-  } catch (err) {
-    setStatus('season-status', `Der Jahresgang konnte nicht geladen werden: ${err.message}`);
-  } finally {
-    chart.classList.remove('is-loading');
-  }
-}
-
-function renderSeasonal() {
-  const data = state.season.data;
-  if (!data) return;
-  const param = data.parameter;
-  const isW = param === 'W';
-  const chart = document.getElementById('season-chart');
-  const [y0, y1] = data.years;
-
-  document.getElementById('season-title').textContent = isW ? 'Monatsmittel des Wasserstands' : 'Monatsmittel der Wassertemperatur';
-  document.getElementById('season-unit').textContent = isW ? 'Abweichung vom mittleren Pegel in cm' : 'in °C';
-  document.getElementById('season-note').textContent =
-    `Mittel der Monatsmittel aller vollständigen Jahre ${y0}–${y1}. Im Tooltip: Spanne zwischen dem tiefsten und höchsten Monatsmittel dieser Jahre.`;
-
-  const series = data.stations.map((s) => ({ station: stationByNo(s.station_no), months: s.months })).filter((s) => s.station);
-  const values = series.flatMap((s) => s.months.map((m) => m.mean)).filter((v) => v != null);
-
-  const width = chart.clientWidth;
-  const height = chart.clientHeight;
-  const small = width < 560;
-  const m = { top: 12, right: small ? 8 : 16, bottom: 28, left: small ? 38 : 48 };
-  const innerW = width - m.left - m.right;
-  const innerH = height - m.top - m.bottom;
-  if (innerW < 50 || innerH < 50) return; // Grafik (noch) nicht sichtbar, z.B. Tab im Hintergrund
-
-  const x = d3.scalePoint().domain(d3.range(1, 13)).range([0, innerW]).padding(0.3);
-  const y = d3.scaleLinear().domain([Math.min(0, d3.min(values)), Math.max(0, d3.max(values))]).nice().range([innerH, 0]);
-
-  const svg = d3.select(chart).selectAll('svg').data([null]).join('svg')
-    .attr('width', width).attr('height', height).attr('role', 'img')
-    .attr('aria-label', `Jahresgang ${isW ? 'Wasserstand' : 'Wassertemperatur'}, Monatsmittel ${y0}–${y1}`);
-  svg.selectAll('*').remove();
-  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
-
-  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
-    .call(d3.axisBottom(x).tickSizeOuter(0).tickFormat((mm) => (small ? MONTHS_SHORT[mm - 1][0] : MONTHS_SHORT[mm - 1])))
-    .call((a) => a.selectAll('.tick line').attr('y2', 4));
-  g.append('g').attr('class', 'axis axis--y')
-    .call(d3.axisLeft(y).ticks(6).tickSize(-innerW).tickFormat((v) => (isW ? fmtSigned(v) : fmt0(v))))
-    .call((a) => a.selectAll('.tick text').attr('x', -8));
-  g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
-  if (isW) g.append('text').attr('class', 'refline-label').attr('x', innerW).attr('y', y(0) - 5).attr('text-anchor', 'end').text('mittlerer Pegel');
-
-  const line = d3.line().defined((d) => d.mean != null).x((d) => x(d.month)).y((d) => y(d.mean)).curve(d3.curveMonotoneX);
-  for (const s of series) {
-    g.append('path').attr('class', 'series-line').style('stroke', colorOf(s.station)).attr('d', line(s.months));
-    g.selectAll(null).data(s.months.filter((d) => d.mean != null)).join('circle')
-      .attr('class', 'series-dot').attr('r', 3).style('fill', colorOf(s.station))
-      .attr('cx', (d) => x(d.month)).attr('cy', (d) => y(d.mean));
-  }
-
-  const f = isW ? fmtCm : fmtTemp;
-  attachCrosshair({
-    chart, g, innerW, innerH, margin: m,
-    positions: d3.range(1, 13).map((mm) => x(mm)),
-    render(i, hover) {
-      const month = i + 1;
-      const rows = series.map((s) => ({ s, d: s.months[i] })).filter((r) => r.d.mean != null).sort((a, b) => b.d.mean - a.d.mean);
-      hover.selectAll('circle').data(rows).join('circle').attr('class', 'hover-dot').attr('r', 5)
-        .style('fill', (r) => colorOf(r.s.station)).attr('cx', x(month)).attr('cy', (r) => y(r.d.mean));
-      return el('div', {},
-        el('div', { class: 'tooltip__date' }, `${MONTHS[i]} (Mittel ${y0}–${y1})`),
-        rows.map(({ s, d }) => el('div', { class: 'tooltip__row' },
-          el('span', { class: 'tooltip__key', style: `background:${colorOf(s.station)}` }),
-          el('span', { class: 'tooltip__name' }, s.station.river_name, el('small', {}, s.station.name)),
-          el('span', { class: 'tooltip__value' }, f(d.mean), el('small', {}, `${f(d.min)} bis ${f(d.max)}`)))));
-    },
-    label: (i) => MONTHS[i],
-  });
-
-  renderSeasonFindings(series, isW, y0, y1);
-}
-
-/** Textliche Beobachtungen zum Jahresgang – berechnet aus den geladenen Monatsmitteln */
-function renderSeasonFindings(series, isW, y0, y1) {
-  const box = document.getElementById('season-findings');
-  const stats = series.map((s) => {
-    const valid = s.months.filter((d) => d.mean != null);
-    if (!valid.length) return null;
-    const hi = d3.greatest(valid, (d) => d.mean);
-    const lo = d3.least(valid, (d) => d.mean);
-    return { s, hi, lo, amp: hi.mean - lo.mean };
-  }).filter(Boolean);
-  if (stats.length < 2) { box.replaceChildren(); return; }
-
-  const byAmp = [...stats].sort((a, b) => b.amp - a.amp);
-  const p = [];
-  if (!isW) {
-    const hot = d3.greatest(stats, (t) => t.hi.mean);
-    const cold = d3.least(stats, (t) => t.hi.mean);
-    p.push(el('p', {}, 'Im wärmsten Monat erreicht ', keySwatch(hot.s.station), `${hot.s.station.display_name} im Mittel ${fmtTemp(hot.hi.mean)} (${MONTHS[hot.hi.month - 1]}), `,
-      keySwatch(cold.s.station), `${cold.s.station.display_name} dagegen nur ${fmtTemp(cold.hi.mean)} (${MONTHS[cold.hi.month - 1]}).`));
-    p.push(el('p', {}, `Am stärksten schwankt die Temperatur übers Jahr bei ${byAmp[0].s.station.display_name} (${fmt1(byAmp[0].amp)} Grad zwischen ${MONTHS[byAmp[0].lo.month - 1]} und ${MONTHS[byAmp[0].hi.month - 1]}), am wenigsten bei ${byAmp[byAmp.length - 1].s.station.display_name} (${fmt1(byAmp[byAmp.length - 1].amp)} Grad). `,
-      'Flüsse, die direkt aus einem See kommen, führen im Sommer das an der Seeoberfläche erwärmte Wasser ab; Schmelzwasser aus den Alpen bleibt dagegen kalt. Die Daten zeigen dieses Muster – sie beweisen aber nicht, welcher Faktor im Einzelfall entscheidend ist.'));
-  } else {
-    const summer = stats.filter((t) => t.hi.month >= 5 && t.hi.month <= 8);
-    const other = stats.filter((t) => !(t.hi.month >= 5 && t.hi.month <= 8));
-    p.push(el('p', {}, `Am grössten ist der Unterschied zwischen Hoch- und Niedrigwasser-Monat bei ${byAmp[0].s.station.display_name}: ${fmt0(byAmp[0].amp)} cm zwischen ${MONTHS[byAmp[0].lo.month - 1]} und ${MONTHS[byAmp[0].hi.month - 1]}. Am flachsten verläuft das Jahr bei ${byAmp[byAmp.length - 1].s.station.display_name} (${fmt0(byAmp[byAmp.length - 1].amp)} cm).`));
-    if (summer.length) {
-      p.push(el('p', {}, `Zwischen Mai und August am höchsten: ${listJoin(summer.map((t) => `${t.s.station.river_name} (${MONTHS[t.hi.month - 1]})`))}. `,
-        other.length ? `Anders ${listJoin(other.map((t) => `${t.s.station.river_name} (höchster Monat: ${MONTHS[t.hi.month - 1]})`))}. ` : '',
-        'Ein Hochstand im Frühsommer passt zum bekannten Muster von Flüssen, die von Schnee- und Gletscherschmelze gespeist werden. Wehre und Seeregulierungen beeinflussen die Pegel zusätzlich.'));
-    }
-  }
-  p.push(el('p', { class: 'muted' }, `Grundlage: Monatsmittel der vollständigen Jahre ${y0}–${y1}, berechnet aus der eigenen Datenbank.`));
-  box.replaceChildren(...p);
-}
-
 /* ---------- 6) Badetage-Tabelle ---------------------------------- */
 
 function renderHeatTable() {
@@ -764,7 +969,7 @@ function renderHeatTable() {
   const current = Number(ins.latest_date.slice(0, 4));
 
   const head = el('thead', {}, el('tr', {}, el('th', { scope: 'col' }, 'Fluss'),
-    years.map((y) => el('th', { scope: 'col' }, y === current ? `${y}*` : String(y)))));
+    years.map((y) => el('th', { scope: 'col', class: y === YEARS.ref || y === YEARS.cur ? 'is-focus' : '' }, y === current ? `${y}*` : String(y)))));
   const body = el('tbody', {}, ins.stations.map((s) => {
     const station = stationByNo(s.station_no);
     return el('tr', {},
@@ -773,8 +978,9 @@ function renderHeatTable() {
         const row = s.WT.by_year.find((b) => b.year === y);
         if (!row) return el('td', {}, '–');
         const step = row.days_ge_20 === 0 ? 0 : Math.max(1, Math.ceil((row.days_ge_20 / max) * steps));
+        const focus = y === YEARS.ref || y === YEARS.cur ? ' is-focus' : '';
         return el('td', {
-          class: step >= 4 ? 'heat--dark' : '',
+          class: (step >= 4 ? 'heat--dark' : '') + focus,
           style: `background:var(--seq-${step})`,
           title: `${s.display_name}, ${y}: ${row.days_ge_20} Tage ≥ 20 °C (von ${row.days} Tagen mit Messwert)`,
         }, fmt0(row.days_ge_20));
@@ -782,7 +988,7 @@ function renderHeatTable() {
   }));
   table.replaceChildren(head, body);
   document.getElementById('heat-note').textContent =
-    `* ${current}: nur bis ${longDate(ins.latest_date)}. Je kräftiger die Farbe, desto mehr Tage. 20 °C ist eine leicht lesbare Schwelle, kein offizieller Grenzwert.`;
+    `* ${current}: nur bis ${longDate(ins.latest_date)}. Je kräftiger die Farbe, desto mehr Tage. Umrandet: ${YEARS.ref} und ${YEARS.cur}. 20 °C ist eine leicht lesbare Schwelle, kein offizieller Grenzwert.`;
 }
 
 /* ---------- 7) Jahresvergleich (Punktdiagramm) ------------------- */
@@ -838,10 +1044,12 @@ function renderYtd() {
     const [lo, hi] = d3.extent(r.years, (y) => y.v);
     row.append('line').attr('x1', x(lo)).attr('x2', x(hi)).attr('y1', cy).attr('y2', cy).style('stroke', 'var(--axis)').attr('stroke-width', 1);
 
-    const sorted = [...r.years].sort((a, b) => (a.year === current) - (b.year === current)); // aktuelles Jahr zuoberst
+    // Zeichenreihenfolge: andere Jahre, dann 2022, zuoberst das aktuelle Jahr
+    const rank = (y) => (y.year === current ? 2 : y.year === YEARS.ref ? 1 : 0);
+    const sorted = [...r.years].sort((a, b) => rank(a) - rank(b));
     row.selectAll('circle').data(sorted).join('circle')
-      .attr('class', (y) => (y.year === current ? 'ytd-dot' : 'ytd-dot ytd-dot--past'))
-      .attr('r', (y) => (y.year === current ? 7 : 5))
+      .attr('class', (y) => (y.year === current ? 'ytd-dot' : y.year === YEARS.ref ? 'ytd-dot ytd-dot--ref' : 'ytd-dot ytd-dot--past'))
+      .attr('r', (y) => (y.year === current ? 7 : y.year === YEARS.ref ? 6 : 5))
       .attr('cx', (y) => x(y.v)).attr('cy', cy)
       .style('fill', (y) => (y.year === current ? colorOf(r.station) : null))
       .on('pointerenter', (event, y) => {
@@ -859,9 +1067,10 @@ function renderYtd() {
     }
   });
 
-  document.getElementById('ytd-note').textContent = isW
-    ? `Punkte: ein Punkt pro Jahr (${rows[0]?.years[0]?.year}–${current}), farbig = ${current}. Rechts: Wert ${current}. Pegel als Abweichung vom mittleren Pegel der Station.`
-    : `Punkte: ein Punkt pro Jahr (${rows[0]?.years[0]?.year}–${current}), farbig = ${current}. Rechts: Wert ${current}.`;
+  setSlot('ytd-intro', `Für jedes Jahr seit ${rows[0]?.years[0]?.year ?? 2020} wird nur der Zeitraum 1. Januar bis ${cutoff} gemittelt – so lässt sich ${current} fair mit allen Vorjahren vergleichen, nicht nur mit ${YEARS.ref}.`);
+  document.getElementById('ytd-note').textContent =
+    `Ein Punkt pro Jahr (${rows[0]?.years[0]?.year}–${current}). Gefüllt: ${current}, hohl: ${YEARS.ref}, grau: übrige Jahre. Rechts: Wert ${current}.` +
+    (isW ? ' Pegel als Abweichung vom mittleren Pegel der Station.' : '');
 }
 
 /* ---------- 8) Tooltip, Crosshair, Resize, Animationen ----------- */
@@ -873,7 +1082,7 @@ const DOCK_BELOW = 560; // unter dieser Grafikbreite: Werte-Panel unter der Graf
  * schwebender Tooltip die Linien verdecken – dort werden die Werte in einem
  * Panel direkt unter der Grafik angezeigt («dock»).
  */
-function getTooltip(chart, { dockable = false } = {}) {
+function getTooltip(chart, { dockable = false, dockHint = true } = {}) {
   let node = chart.querySelector('.tooltip');
   if (!node) {
     node = el('div', { class: 'tooltip', role: 'status', 'aria-live': 'polite' });
@@ -888,7 +1097,11 @@ function getTooltip(chart, { dockable = false } = {}) {
     }
   }
   const docked = () => dock && chart.clientWidth < DOCK_BELOW;
-  const hint = () => dock.replaceChildren(el('p', { class: 'tooltip-dock__hint' }, 'Tippe auf die Grafik oder wische seitwärts, um die Werte zu sehen.'));
+  // Ohne Hinweistext (z.B. bei vielen kleinen Grafiken) bleibt das Panel versteckt, bis es gebraucht wird
+  const hint = () => {
+    if (dockHint) dock.replaceChildren(el('p', { class: 'tooltip-dock__hint' }, 'Tippe auf die Grafik oder wische seitwärts, um die Werte zu sehen.'));
+    else dock.hidden = true;
+  };
   if (dock) {
     dock.hidden = !docked();
     if (!dock.childElementCount) hint();
@@ -897,6 +1110,7 @@ function getTooltip(chart, { dockable = false } = {}) {
   return {
     show(content, px, py) {
       if (docked()) {
+        dock.hidden = false;
         dock.replaceChildren(content);
         return;
       }
@@ -923,8 +1137,8 @@ function getTooltip(chart, { dockable = false } = {}) {
  * Crosshair: Eine vertikale Linie folgt Maus/Finger und rastet am nächsten
  * Datenpunkt ein. Tastatur: Pfeiltasten links/rechts, Esc schliesst.
  */
-function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, label }) {
-  const tooltip = getTooltip(chart, { dockable: true });
+function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, label, dockHint = true }) {
+  const tooltip = getTooltip(chart, { dockable: true, dockHint });
   const hover = g.append('g').style('display', 'none');
   const rule = hover.append('line').attr('class', 'crosshair').attr('y1', 0).attr('y2', innerH);
   const dots = hover.append('g');
@@ -977,21 +1191,33 @@ function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, 
   }
 }
 
-/** Grafiken bei Grössenänderung neu zeichnen (ohne neue Datenabfrage) */
+/**
+ * Grafiken neu zeichnen (ohne neue Datenabfrage), wenn sich die Breite ändert
+ * oder die Seite sichtbar wird – ein Hintergrund-Tab hat beim Laden die Breite 0.
+ */
 function setupResize() {
   let frame = null;
   let lastWidth = window.innerWidth;
   const redraw = () => {
-    if (window.innerWidth === lastWidth) return; // mobile Adressleiste ändert nur die Höhe
-    lastWidth = window.innerWidth;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
+      renderMultiples();
+      renderDumbbells();
       renderTimeseries();
-      renderSeasonal();
       renderYtd();
     });
   };
-  window.addEventListener('resize', redraw);
+  window.addEventListener('resize', () => {
+    if (window.innerWidth === lastWidth) return; // mobile Adressleiste ändert nur die Höhe
+    lastWidth = window.innerWidth;
+    redraw();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && window.innerWidth !== lastWidth) {
+      lastWidth = window.innerWidth;
+      redraw();
+    }
+  });
 }
 
 /** Dezente Einblend-Animation beim Scrollen */
