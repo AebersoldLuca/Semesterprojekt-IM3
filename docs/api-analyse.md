@@ -61,14 +61,13 @@ query Observations($nos: [String!], $params: [String!], $from: AWSDateTime!, $to
         parameterName: { _in: $params }          # ["W", "WT"]
         timestamp: { _gte: $from, _lt: $to }
       }
-      limit: 10000
-    ) { parameterName unitSymbol timestamp value releaseState station { no } }
+    ) {                                           # bewusst ohne limit, siehe Abschnitt 3 parameterName unitSymbol timestamp value releaseState station { no } }
   } }
 }
 ```
 
-**Kandidatensuche** (`php etl/extract.php --candidates`): Tagesmittel aller Stationen für W und WT an einem Stichtag
-+ alle Stationen mit Status «Aufgebaut».
+**Kandidatensuche** (einmalige Abfrage während der API-Analyse): Tagesmittel aller Stationen für W und WT an einem
+Stichtag + alle Stationen mit Status «Aufgebaut».
 
 ## 3. Limits, Pagination, Zeitfenster
 
@@ -125,7 +124,7 @@ werden per Upsert aktualisiert.
 ## 8. Auswahl der Messstationen
 
 Grundlage: 75 aktive Stationen liefern am Stichtag sowohl W als auch WT
-(`php etl/extract.php --candidates`). Daraus wurden sechs Stationen gewählt, die unterschiedliche Landschaften
+(einmalige Kandidatensuche, siehe Abschnitt 2). Daraus wurden sechs Stationen gewählt, die unterschiedliche Landschaften
 und Abflusstypen vertreten und für die W und WT seit 2020 lückenlos vorliegen (je 2456 Tage bis 21.9.2026; bei der Aare fehlen nur die drei verworfenen WT-Werte):
 
 | Nr. | Gewässer – Station | Einzugsgebiet | Warum |

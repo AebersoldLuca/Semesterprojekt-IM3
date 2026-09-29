@@ -1,282 +1,260 @@
 <?php
 /**
- * ============================================================
- *  4) U N L O A D   –   MySQL  →  JSON  →  script.js
- * ============================================================
+ * Unload – der JSON-Endpunkt für die Story-Seite.
  *
- * Liest die gespeicherten Tagesmittel aus der EIGENEN Datenbank und gibt sie
- * als JSON an das Frontend. Hier wird NIE die BAFU-API aufgerufen – deshalb
- * funktioniert die Website auch, wenn die BAFU-API gerade nicht erreichbar ist.
+ * Liest die gespeicherten Tagesmittel aus unserer Datenbank und liefert sie
+ * nach dem Datenvertrag als JSON. Hier wird nie die BAFU-API gefragt: Die
+ * Website läuft auch dann, wenn die API gerade nicht erreichbar ist.
  *
- * Die Antwort entspricht 1:1 unserem DATENVERTRAG (Version 1):
+ * Datenfluss dieser Datei:
  *
- *   Ein Datensatz steht für: eine Messstation (ein Fluss) an einem Tag – das Tagesmittel.
+ *   Anfrage aus dem Browser     GET /unload.php?years=2022,2026
+ *     -> geprüfte Parameter     stations, parameter, years, from, to – sonst 400
+ *       -> SELECT mit JOIN      observations + stations, pro Station und Tag eine Zeile
+ *         -> Datenvertrag       normalizeRecord()
+ *           -> JSON-Antwort     eine Liste von Datensätzen
  *
- *   Feldname                  Typ     Beispiel       Bedeutung und Einheit                               darf fehlen?
- *   station_no                String  "2044"         BAFU-Nummer der Messstation                          nein
- *   river_name                String  "Thur"         Name des Gewässers                                   nein
- *   station_name              String  "Andelfingen"  Ort der Messstation                                  nein
- *   date                      String  "2026-09-27"   Kalendertag des Tagesmittels                         nein
- *   water_temperature_c       Number  16.8           Wassertemperatur, Tagesmittel in °C                  ja, dann null
- *   water_level_deviation_cm  Number  -27            Wasserstand: Abweichung vom mittleren Pegel in cm    ja, dann null
- *   release_state             Number  2              Prüfstatus BAFU: 1 provisorisch, 2 validiert,        ja, dann null
- *                                                    3 definitiv
+ * Datenvertrag (Version 1) – ein Datensatz ist eine Station an einem Tag:
  *
- *   Filter (alle optional, kombinierbar):
- *   stations   unload.php?stations=2044              nur bestimmte Flüsse (kommagetrennt)
- *   parameter  unload.php?parameter=WT               WT = Wassertemperatur, W = Wasserstand
- *                                                    (die andere Messgrösse ist dann null)
- *   years      unload.php?years=2022,2026            nur diese Kalenderjahre
- *   from / to  unload.php?from=2026-01-01&to=2026-09-27   nur dieser Zeitraum
+ *   {
+ *     "station_no": "2044",               BAFU-Nummer der Station
+ *     "river_name": "Thur",               Gewässer
+ *     "station_name": "Andelfingen",      Ort der Station
+ *     "date": "2026-09-27",               Kalendertag des Tagesmittels
+ *     "water_temperature_c": 16.8,        Wassertemperatur in °C, sonst null
+ *     "water_level_deviation_cm": -27,    Abweichung vom mittleren Pegel in cm, sonst null
+ *     "release_state": 2                  1 provisorisch, 2 validiert, 3 definitiv, sonst null
+ *   }
  *
- *   Ohne Filter: alle Flüsse, die letzten 365 Tage bis zum jüngsten Messtag.
+ * Filter (alle optional, kombinierbar):
  *
- * Antwort: ein JSON-Array von Datensätzen, sortiert nach Station und Datum.
- * Bei Fehlern: {"error": "…"} mit passendem HTTP-Status (400, 404, 405, 503, 500).
+ *   GET unload.php                              alle Flüsse, die letzten 365 Tage
+ *   GET unload.php?stations=2044,2243           nur diese Stationen
+ *   GET unload.php?parameter=WT                 nur Temperatur (W = nur Wasserstand)
+ *   GET unload.php?years=2022,2026              nur diese Jahre
+ *   GET unload.php?from=2026-01-01&to=2026-06-30  nur dieser Zeitraum
  */
 
-require_once __DIR__ . '/db.php';
+header('Content-Type: application/json; charset=utf-8');
 
-/** Erlaubte Werte für «parameter» */
-const PARAMETERS = ['W', 'WT'];
+require __DIR__ . '/config.php';
 
-/** Fehler, deren Meldung dem Besucher gezeigt werden darf (z.B. ungültiger Filter). */
-class UnloadException extends RuntimeException
+// ---------------------------------------------------------------------------
+// Der Datenvertrag
+// ---------------------------------------------------------------------------
+//
+// An genau einer Stelle steht, welche Felder die Antwort hat und welchen Typ.
+// DECIMAL kommt bei PDO als Text zurück – ohne (float) stünde im JSON "16.8"
+// statt 16.8.
+//
+// Drei Felder werden hier erst berechnet:
+//
+// - station_name: Das BAFU schreibt manchmal «Rheinfelden, Messstation». Der
+//   Ort ist der Teil vor dem Komma.
+// - water_level_deviation_cm: Ein Pegel in m ü.M. ist zwischen zwei Flüssen
+//   nicht vergleichbar (Rhein 260 m, Aare 570 m). Deshalb liefern wir die
+//   Abweichung vom mittleren Pegel dieser Station, in Zentimetern.
+// - release_state: Ein Datensatz enthält bis zu zwei Messwerte mit je eigenem
+//   Prüfstatus. Wir liefern den vorsichtigeren: den tieferen der beiden, und
+//   null, sobald einer der vorhandenen Werte gar keinen Status hat.
+
+function normalizeRecord(array $row): array
 {
-    public function __construct(string $message, public int $status = 400)
-    {
-        parent::__construct($message);
+    $hasTemperature = $row['wt'] !== null;
+    $hasLevel = $row['w'] !== null && $row['mean_level'] !== null;
+
+    $states = [];
+    if ($hasTemperature) {
+        $states[] = $row['wt_state'];
+    }
+    if ($hasLevel) {
+        $states[] = $row['w_state'];
+    }
+
+    $releaseState = null;
+    if (count($states) > 0 && !in_array(null, $states, true)) {
+        $releaseState = (int) min($states);
+    }
+
+    return [
+        'station_no' => (string) $row['station_no'],
+        'river_name' => $row['river_name'],
+        'station_name' => trim(explode(',', $row['station_name'])[0]),
+        'date' => $row['date'],
+        'water_temperature_c' => $hasTemperature
+            ? round((float) $row['wt'], 2)
+            : null,
+        'water_level_deviation_cm' => $hasLevel
+            ? round(((float) $row['w'] - (float) $row['mean_level']) * 100, 1)
+            : null,
+        'release_state' => $releaseState,
+    ];
+}
+
+// ---------------------------------------------------------------------------
+// Eine falsch gestellte Frage abweisen
+// ---------------------------------------------------------------------------
+//
+// 400 heisst: Die Anfrage war falsch, nicht der Server. Die Meldung sagt, was
+// erlaubt ist – das hilft der fragenden Seite weiter.
+
+function rejectRequest(string $message): void
+{
+    http_response_code(400);
+    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ---------------------------------------------------------------------------
+// Filter aus $_GET lesen und prüfen
+// ---------------------------------------------------------------------------
+//
+// Jeder Wert, der von aussen kommt, wird geprüft, bevor er in die Abfrage
+// darf. Im SQL steht er danach trotzdem nur als Platzhalter.
+//
+// Listen kommen kommagetrennt: «2022,2026» wird zu ['2022', '2026'].
+
+$stations = array_filter(array_map('trim', explode(',', $_GET['stations'] ?? '')));
+$parameter = trim($_GET['parameter'] ?? '');
+$years = array_filter(array_map('trim', explode(',', $_GET['years'] ?? '')));
+$from = trim($_GET['from'] ?? '');
+$to = trim($_GET['to'] ?? '');
+
+// Stationen: vierstellige BAFU-Nummern. Eine Station, die es nicht gibt, ist
+// kein Fehler – die Antwort ist dann einfach eine leere Liste.
+foreach ($stations as $stationNo) {
+    if (!preg_match('/^\d{4}$/', $stationNo)) {
+        rejectRequest('Ungültige Stationsnummer. Beispiel: stations=2044,2243');
     }
 }
 
-ini_set('display_errors', '0'); // PHP-Warnungen würden das JSON zerstören
+// Messgrösse: genau einer von zwei bekannten Werten.
+$allowedParameters = ['W', 'WT'];
+
+if ($parameter !== '' && !in_array($parameter, $allowedParameters, true)) {
+    rejectRequest('Unbekannte Messgrösse. Erlaubt: W, WT');
+}
+
+// Jahre: vierstellig, höchstens zehn auf einmal.
+foreach ($years as $year) {
+    if (!preg_match('/^(19|20)\d{2}$/', $year)) {
+        rejectRequest('Ungültige Jahreszahl. Beispiel: years=2022,2026');
+    }
+}
+
+if (count($stations) > 20 || count($years) > 10) {
+    rejectRequest('Zu viele Werte auf einmal.');
+}
+
+// Datum: streng im Format JJJJ-MM-TT. Die zweite Prüfung weist auch einen
+// 30. Februar ab, den PHP sonst still in den 2. März verwandeln würde.
+foreach (['from' => $from, 'to' => $to] as $name => $date) {
+    if ($date === '') {
+        continue;
+    }
+
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+
+    if ($parsed === false || $parsed->format('Y-m-d') !== $date) {
+        rejectRequest("Ungültiges Datum für {$name}. Format: JJJJ-MM-TT");
+    }
+}
+
+if ($from !== '' && $to !== '' && $from > $to) {
+    rejectRequest('from muss vor to liegen.');
+}
+
+// ---------------------------------------------------------------------------
+// Aus der Datenbank lesen
+// ---------------------------------------------------------------------------
 
 try {
-    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-        header('Allow: GET');
-        throw new UnloadException('Nur GET-Anfragen sind erlaubt.', 405);
-    }
-    try {
-        $pdo = db();
-    } catch (Throwable $e) { // Server down, falsche Zugangsdaten oder config.php fehlt
-        log_message('error', 'DB-Verbindung: ' . $e->getMessage(), 'unload');
-        throw new UnloadException('Die Datenbank ist momentan nicht erreichbar.', 503);
-    }
-    send_json(unload_records($pdo));
-} catch (UnloadException $e) {
-    send_json(['error' => $e->getMessage()], $e->status);
-} catch (PDOException $e) {
-    log_message('error', 'DB: ' . $e->getMessage(), 'unload');
-    send_json(['error' => 'Die Datenbank ist momentan nicht erreichbar.'], 503);
-} catch (Throwable $e) {
-    log_message('error', get_class($e) . ': ' . $e->getMessage(), 'unload');
-    send_json(['error' => 'Interner Fehler. Bitte später erneut versuchen.'], 500);
-}
+    $pdo = new PDO($dsn, $username, $password, $options);
 
-function send_json(array $data, int $status = 200): void
-{
-    // Komprimiert senden, falls möglich (die Antwort kann einige tausend Datensätze enthalten)
-    if (!headers_sent() && extension_loaded('zlib') && !ini_get('zlib.output_compression')) {
-        ob_start('ob_gzhandler');
-    }
-    http_response_code($status);
-    header('Content-Type: application/json; charset=utf-8');
-    header('X-Content-Type-Options: nosniff');
-    // Daten ändern sich höchstens einmal täglich → 5 Minuten Browser-Cache
-    header('Cache-Control: ' . ($status === 200 ? 'public, max-age=300' : 'no-store'));
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
-}
-
-// ==================================================================
-// Datensätze gemäss Datenvertrag
-// ==================================================================
-
-function unload_records(PDO $pdo): array
-{
-    // 1) Filter prüfen (Whitelist / festes Format – nie ungeprüft ins SQL)
-    $stations  = input_stations($_GET['stations'] ?? null);
-    $parameter = input_parameter($_GET['parameter'] ?? null);
-    $years     = input_years($_GET['years'] ?? null);
-    $from      = input_date($_GET['from'] ?? null, 'from');
-    $to        = input_date($_GET['to'] ?? null, 'to');
-
-    // Ohne Jahres- und Datumsfilter: die letzten 365 Tage bis zum jüngsten Messtag
-    if (!$years && $from === null && $to === null) {
+    // Ohne Jahr und ohne Datum: die letzten 365 Tage bis zum jüngsten Messtag.
+    if (count($years) === 0 && $from === '' && $to === '') {
         $latest = $pdo->query('SELECT MAX(obs_date) FROM observations')->fetchColumn();
-        if (!$latest) {
-            return [];
+
+        if ($latest === null) {
+            echo '[]';
+            exit;
         }
-        $to   = $latest;
-        $from = (new DateTimeImmutable($latest))->modify('-364 days')->format('Y-m-d');
-    }
-    if ($from !== null && $to !== null && $from > $to) {
-        throw new UnloadException('«from» muss vor «to» liegen.');
+
+        $to = $latest;
+        $from = date('Y-m-d', strtotime($latest . ' -364 days'));
     }
 
-    // 2) Unbekannte Stationen melden
-    if ($stations) {
-        $stmt = $pdo->prepare('SELECT station_no FROM stations WHERE is_active = 1 AND station_no IN (' . placeholders($stations) . ')');
-        $stmt->execute($stations);
-        $unknown = array_diff($stations, $stmt->fetchAll(PDO::FETCH_COLUMN));
-        if ($unknown) {
-            throw new UnloadException('Unbekannte Station: ' . implode(', ', $unknown), 404);
-        }
-    }
-
-    // 3) SQL mit Prepared-Statement-Parametern zusammensetzen
-    $where  = ['s.is_active = 1'];
+    // Die Bedingungen wachsen mit den Filtern. Für jede Liste braucht es so
+    // viele Fragezeichen, wie sie Werte hat: IN (?, ?).
+    $where = ['s.is_active = 1'];
     $params = [];
-    if ($stations) {
-        $where[] = 's.station_no IN (' . placeholders($stations) . ')';
-        array_push($params, ...$stations);
+
+    if (count($stations) > 0) {
+        $where[] = 's.station_no IN (' . implode(',', array_fill(0, count($stations), '?')) . ')';
+        $params = array_merge($params, array_values($stations));
     }
-    if ($parameter) {
-        $where[]  = 'o.parameter_code = ?';
+
+    if ($parameter !== '') {
+        $where[] = 'o.parameter_code = ?';
         $params[] = $parameter;
     }
-    if ($years) {
-        $where[] = 'YEAR(o.obs_date) IN (' . placeholders($years) . ')';
-        array_push($params, ...$years);
+
+    if (count($years) > 0) {
+        $where[] = 'YEAR(o.obs_date) IN (' . implode(',', array_fill(0, count($years), '?')) . ')';
+        $params = array_merge($params, array_map('intval', $years));
     }
-    if ($from !== null) {
-        $where[]  = 'o.obs_date >= ?';
+
+    if ($from !== '') {
+        $where[] = 'o.obs_date >= ?';
         $params[] = $from;
     }
-    if ($to !== null) {
-        $where[]  = 'o.obs_date <= ?';
+
+    if ($to !== '') {
+        $where[] = 'o.obs_date <= ?';
         $params[] = $to;
     }
 
-    // Pro Station und Tag eine Zeile: Wassertemperatur und Wasserstand nebeneinander (Pivot).
-    // Der Wasserstand wird als Abweichung vom mittleren Pegel der Station über den
-    // gesamten gespeicherten Zeitraum berechnet (absolute m ü.M. sind zwischen
-    // Stationen nicht vergleichbar).
-    $sql = 'SELECT s.station_no, s.river_name, s.name AS station_name, o.obs_date AS date,
-                   MAX(CASE WHEN o.parameter_code = \'WT\' THEN o.value END)         AS wt,
-                   MAX(CASE WHEN o.parameter_code = \'WT\' THEN o.release_state END) AS wt_state,
-                   MAX(CASE WHEN o.parameter_code = \'W\'  THEN o.value END)         AS w,
-                   MAX(CASE WHEN o.parameter_code = \'W\'  THEN o.release_state END) AS w_state,
+    // In observations steht jeder Messwert in einer eigenen Zeile. Der
+    // Datenvertrag will pro Station und Tag EINE Zeile mit beiden Werten.
+    // GROUP BY fasst die zwei Zeilen zusammen, MAX(CASE …) holt je den
+    // passenden Wert heraus.
+    //
+    // Der LEFT JOIN auf b liefert pro Station den mittleren Pegel über alle
+    // gespeicherten Tage – die Nulllinie für water_level_deviation_cm.
+    $sql = "SELECT s.station_no,
+                   s.river_name,
+                   s.name AS station_name,
+                   o.obs_date AS date,
+                   MAX(CASE WHEN o.parameter_code = 'WT' THEN o.value END) AS wt,
+                   MAX(CASE WHEN o.parameter_code = 'WT' THEN o.release_state END) AS wt_state,
+                   MAX(CASE WHEN o.parameter_code = 'W' THEN o.value END) AS w,
+                   MAX(CASE WHEN o.parameter_code = 'W' THEN o.release_state END) AS w_state,
                    b.mean_level
-            FROM observations o
-            JOIN stations s ON s.id = o.station_id
-            LEFT JOIN (SELECT station_id, AVG(value) AS mean_level
-                       FROM observations WHERE parameter_code = \'W\' GROUP BY station_id) b
-                   ON b.station_id = s.id
-            WHERE ' . implode(' AND ', $where) . '
+            FROM observations AS o
+            JOIN stations AS s ON s.id = o.station_id
+            LEFT JOIN (
+                SELECT station_id, AVG(value) AS mean_level
+                FROM observations
+                WHERE parameter_code = 'W'
+                GROUP BY station_id
+            ) AS b ON b.station_id = s.id
+            WHERE " . implode(' AND ', $where) . '
             GROUP BY s.id, o.obs_date
             ORDER BY s.sort_order, o.obs_date';
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
 
-    // 4) In die Form des Datenvertrags bringen
-    $records = [];
-    foreach ($stmt as $r) {
-        $hasWt = $r['wt'] !== null;
-        $hasW  = $r['w'] !== null && $r['mean_level'] !== null;
-        $records[] = [
-            'station_no'               => (string) $r['station_no'],
-            'river_name'               => $r['river_name'],
-            'station_name'             => station_place($r['station_name']),
-            'date'                     => $r['date'],
-            'water_temperature_c'      => $hasWt ? round((float) $r['wt'], 2) : null,
-            'water_level_deviation_cm' => $hasW ? round(((float) $r['w'] - (float) $r['mean_level']) * 100, 1) : null,
-            'release_state'            => record_release_state($hasWt ? $r['wt_state'] : false, $hasW ? $r['w_state'] : false),
-        ];
-    }
-    return $records;
-}
+    $statement = $pdo->prepare($sql);
+    $statement->execute($params);
 
-/**
- * «Andelfingen» statt z.B. «Rheinfelden, Messstation»: Der Ort ist der Teil
- * vor dem ersten Komma im BAFU-Stationsnamen.
- */
-function station_place(string $name): string
-{
-    return trim(explode(',', $name)[0]);
-}
+    $rows = $statement->fetchAll();
 
-/**
- * Ein Datensatz enthält bis zu zwei Messwerte mit je eigenem BAFU-Prüfstatus.
- * Im Datensatz steht der vorsichtigere Status: der tiefere der beiden, und null,
- * sobald einer der vorhandenen Werte gar keinen Status hat.
- * (false = dieser Messwert ist im Datensatz nicht vorhanden)
- */
-function record_release_state($a, $b): ?int
-{
-    $states = array_filter([$a, $b], fn($s) => $s !== false);
-    if (!$states || in_array(null, $states, true)) {
-        return null;
-    }
-    return (int) min($states);
-}
+    $data = array_map('normalizeRecord', $rows);
 
-// ==================================================================
-// Filter prüfen
-// ==================================================================
+    echo json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+} catch (Throwable $error) {
+    http_response_code(500);
+    error_log('unload.php: ' . $error->getMessage());
 
-/** Kommagetrennte vierstellige BAFU-Nummern, z.B. "2019,2243". */
-function input_stations(?string $value): array
-{
-    if ($value === null || $value === '') {
-        return [];
-    }
-    $nos = array_values(array_unique(array_filter(array_map('trim', explode(',', $value)), 'strlen')));
-    foreach ($nos as $no) {
-        if (!preg_match('/^\d{4}$/', $no)) {
-            throw new UnloadException('Ungültige Stationsnummer: ' . mb_substr($no, 0, 20));
-        }
-    }
-    if (count($nos) > 20) {
-        throw new UnloadException('Zu viele Stationen angefragt.');
-    }
-    return $nos;
-}
-
-/** WT oder W; null = beide Messgrössen. */
-function input_parameter(?string $value): ?string
-{
-    if ($value === null || $value === '') {
-        return null;
-    }
-    if (!in_array($value, PARAMETERS, true)) {
-        throw new UnloadException('Ungültiger Parameter. Erlaubt: WT, W');
-    }
-    return $value;
-}
-
-/** Kommagetrennte Jahreszahlen, z.B. "2022,2026" (höchstens 10 Jahre). */
-function input_years(?string $value): array
-{
-    if ($value === null || $value === '') {
-        return [];
-    }
-    $years = array_values(array_unique(array_filter(array_map('trim', explode(',', $value)), 'strlen')));
-    foreach ($years as $y) {
-        if (!preg_match('/^(19|20)\d{2}$/', $y)) {
-            throw new UnloadException('Ungültige Jahreszahl: ' . mb_substr($y, 0, 20));
-        }
-    }
-    if (count($years) > 10) {
-        throw new UnloadException('Höchstens 10 Jahre auf einmal.');
-    }
-    return array_map('intval', $years);
-}
-
-/** Datum im Format YYYY-MM-DD (streng geprüft, z.B. kein 30. Februar). */
-function input_date(?string $value, string $name): ?string
-{
-    if ($value === null || $value === '') {
-        return null;
-    }
-    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
-    if ($d === false || $d->format('Y-m-d') !== $value) {
-        throw new UnloadException("Ungültiges Datum für «{$name}». Format: YYYY-MM-DD");
-    }
-    return $value;
-}
-
-/** "?,?,?" für IN (...) */
-function placeholders(array $values): string
-{
-    return implode(',', array_fill(0, count($values), '?'));
+    echo json_encode([
+        'error' => 'Daten konnten nicht geladen werden.',
+    ]);
 }

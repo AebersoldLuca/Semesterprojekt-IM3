@@ -1,58 +1,50 @@
 # Cronjob für den automatischen Import
 
-Der ETL-Prozess (`etl/load.php`) wird **einmal täglich** ausgeführt. Tagesmittel entstehen einmal pro Tag;
-ein häufigerer Import bringt keine neuen Werte, belastet aber die BAFU-API unnötig.
+`etl/load.php` startet die ganze Kette (Extract → Transform → Load) und läuft **einmal täglich**.
+Tagesmittel entstehen einmal pro Tag; ein häufigerer Import bringt keine neuen Werte, belastet aber die BAFU-API.
 
 Empfohlene Zeit: **06:30 Uhr**. Das Tagesmittel des Vortags ist dann sicher verfügbar.
 
-## Variante A – Kommandozeile (empfohlen, z.B. Hostpoint)
+## Einrichten bei Hostpoint
 
-Im Hosting-Control-Panel unter «Cronjobs» einen neuen Job anlegen:
+1. In `config.php` einen langen Zufallswert als Token eintragen, zum Beispiel aus dem Terminal:
 
-```
-30 6 * * *  php /home/BENUTZER/www/PFAD-ZUM-PROJEKT/etl/load.php >> /home/BENUTZER/www/PFAD-ZUM-PROJEKT/logs/cron.log 2>&1
-```
+   ```bash
+   openssl rand -hex 24
+   ```
 
-- `BENUTZER` und `PFAD-ZUM-PROJEKT` durch die eigenen Werte ersetzen.
-- Je nach Hoster muss statt `php` der vollständige Pfad zu einer bestimmten PHP-Version angegeben werden.
-  Den korrekten Pfad zeigt das Control Panel bzw. per SSH der Befehl `which php`. Benötigt wird PHP 8.1 oder neuer.
-- Die Ausgabe (Import-Zusammenfassung) landet in `logs/cron.log`, Fehler zusätzlich in `logs/etl-JJJJ-MM.log`.
+   ```php
+   $etlToken = '…';
+   ```
 
-## Variante B – Aufruf per URL
+2. Im Control Panel unter «Cronjobs» einen neuen Job anlegen:
 
-Falls der Hoster nur URL-Cronjobs erlaubt (oder ein externer Dienst wie cron-job.org verwendet wird):
+   ```
+   30 6 * * *  wget -q -O /dev/null "https://DEINE-DOMAIN/etl/load.php?token=DEIN-TOKEN"
+   ```
 
-1. In `config.php` einen langen Zufallswert setzen: `$etlToken = '…';` (z.B. `openssl rand -hex 24`).
-2. Cronjob auf folgende URL einrichten:
+Ohne gültiges Token antwortet `load.php` mit HTTP 403. Ist `$etlToken` leer, ist der Aufruf per URL gesperrt.
 
-```
-https://DEINE-DOMAIN/etl/load.php?token=DEIN-TOKEN
-```
+> Die URL mit Token ist geheim: nicht ins Repository, nicht auf Screenshots, nicht am Marktstand zeigen.
 
-Ohne gültiges Token antwortet `load.php` mit HTTP 403. Ist `$etlToken` leer, ist der Aufruf per URL komplett gesperrt.
+## Von Hand aufrufen
 
-## Weitere Aufrufe (manuell, per SSH)
+Dieselbe URL im Browser öffnen. `load.php` zeigt dann als Text, was passiert ist:
+wie viele Zeilen die API geliefert hat, wie viele neu, geändert oder unverändert sind, und den jüngsten Messwert
+pro Fluss.
 
-```
-php etl/load.php                     # inkrementell (wie der Cronjob)
-php etl/load.php --full              # alles ab 2020-01-01 neu laden (z.B. einmal im Monat,
-                                     # um nachträgliche BAFU-Validierungen älterer Werte zu übernehmen)
-php etl/load.php --from=2025-01-01   # ab einem bestimmten Datum
-php etl/extract.php --candidates     # prüfen, welche Stationen W und WT liefern
-```
-
-Optionaler zweiter Cronjob für den monatlichen Voll-Abgleich (1. des Monats, 05:00 Uhr):
+Alles ab 2020 neu laden (z.B. nach einer Änderung an `transform.php`):
 
 ```
-0 5 1 * *  php /home/BENUTZER/www/PFAD-ZUM-PROJEKT/etl/load.php --full >> /home/BENUTZER/www/PFAD-ZUM-PROJEKT/logs/cron.log 2>&1
+https://DEINE-DOMAIN/etl/load.php?token=DEIN-TOKEN&full=1
 ```
 
 ## Was passiert bei Fehlern?
 
 | Situation | Verhalten |
 |---|---|
-| BAFU-API nicht erreichbar | 3 Wiederholungen (2 s, 4 s, 8 s), dann Abbruch mit Exit-Code 2. Import-Lauf wird als `failed` protokolliert, **bestehende Daten bleiben unverändert**, die Website zeigt weiter die gespeicherten Daten. |
-| Einzelnes Zeitfenster fehlerhaft | Übrige Fenster werden trotzdem geladen, Lauf = `partial`. |
-| Zu viele Zeilen für ein Fenster | Fenster wird automatisch halbiert. |
-| Datenbank nicht erreichbar | Abbruch vor dem Abruf der API, Eintrag in `logs/etl-JJJJ-MM.log`. |
-| Zwei Läufe gleichzeitig | Der zweite bricht ab (Lock-Datei `etl/data/load.lock`). |
+| BAFU-API nicht erreichbar | 3 Wiederholungen (2 s, 4 s, 8 s), dann Abbruch. Der Lauf steht als `failed` in `import_runs`, **die gespeicherten Daten bleiben unverändert**, die Website zeigt sie weiter. |
+| Einzelnes Zeitfenster fehlerhaft | Die übrigen Fenster werden trotzdem geladen, Lauf = `partial`. Der nächste Lauf holt die Lücke nach. |
+| Zu viele Zeilen für ein Fenster | Das Fenster wird automatisch halbiert. |
+| Datenbank nicht erreichbar | Abbruch vor dem Abruf der API mit der Meldung «Verbindung fehlgeschlagen». |
+| Fehler beim Speichern | Die Transaktion wird zurückgerollt: Es landet keine halbe Lieferung in der Datenbank. |
