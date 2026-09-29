@@ -401,9 +401,18 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 .crosshair { stroke: var(--ink); stroke-width: 1; }
 .hover-dot { stroke: var(--bg); stroke-width: 2; }
 
-/* Detailansicht (Dialog): Linien 2022/2026 und eingefärbte Differenz */
-.multiple__sub { font-family: var(--sans); font-size: .86rem; color: var(--ink-3); margin: 4px 0 6px; }
+/* Jahr gegen Jahr: Raster aus Grafiken, getrennt durch Haarlinien */
+.multiples { display: flex; flex-direction: column; gap: 8px; }
+.multiples__group-title { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 18px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule-2); }
+.multiples__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.multiple { padding: 16px 18px 10px 0; border-bottom: 1px solid var(--rule); }
+.multiple + .multiple { border-left: 1px solid var(--rule); padding-left: 18px; }
+.multiple__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.multiple__title { display: flex; align-items: baseline; gap: 8px; margin: 0; font-weight: 600; font-size: 1.05rem; letter-spacing: -0.02em; }
+.multiple__title .key { width: 8px; height: 8px; display: inline-block; transform: translateY(-1px); }
+.multiple__sub { font-family: var(--mono); font-size: .7rem; color: var(--ink-3); margin: 4px 0 6px; }
 .multiple__sub strong { color: var(--ink); font-weight: 500; }
+.chart--multiple { height: 210px; }
 .line--ref { fill: none; stroke: var(--year-ref); stroke-width: 1.25; }
 .line--cur { fill: none; stroke: var(--ink); stroke-width: 1.75; stroke-linejoin: round; }
 .diff--warm { fill: var(--signal); opacity: .55; }
@@ -416,54 +425,6 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   font-family: var(--sans); font-size: .86rem; letter-spacing: 0; color: var(--ink-3);
 }
 .zoom-open:hover { color: var(--signal); }
-
-/* Flussbänder: jeder Fluss als Band, Breite = Pegel, Farbe = Temperatur */
-.bands { display: flex; flex-direction: column; }
-.bands__group-title { font-size: .86rem; font-weight: 600; color: var(--ink-3); margin: 26px 0 0; }
-.bands__group:first-child .bands__group-title { margin-top: 4px; }
-.band { padding: 16px 18px 10px; margin-top: 10px; background: var(--card); border-radius: var(--radius); }
-.band__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
-.band__head .zoom-open { margin-left: auto; }
-.band__name {
-  appearance: none; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink);
-  display: inline-flex; align-items: baseline; gap: 8px;
-  font: inherit; font-weight: 600; font-size: 1.1rem; letter-spacing: -0.02em;
-  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 5px; transition: text-decoration-color .2s;
-}
-.band__name:hover { text-decoration-color: var(--rule-2); }
-.band__name[aria-pressed="true"] { text-decoration-color: var(--signal); }
-.band__name .key { width: 8px; height: 8px; display: inline-block; transform: translateY(-1px); }
-.band__hot { display: inline-flex; align-items: center; gap: 6px; font-size: .86rem; color: var(--ink-2); }
-.band__hot .icon { color: var(--signal); }
-.band__hot strong { color: var(--ink); font-weight: 600; }
-.band__marker { fill: var(--ink); stroke: var(--card); stroke-width: 2.5; }
-.band__delta { font-family: var(--sans); font-size: .86rem; color: var(--ink-2); }
-.chart.band__chart { height: auto; margin-top: 8px; }
-.band-grid line { stroke: var(--grid); }
-.band__year { fill: var(--ink-2); font-family: var(--mono); font-size: 10.5px; }
-.band__after { fill: var(--card); opacity: .78; pointer-events: none; }
-.band__flow path {
-  fill: none; stroke: rgba(255, 255, 255, .5); stroke-width: 1; stroke-linecap: round;
-  stroke-dasharray: 1.5 11; animation: flow 5s linear infinite;
-}
-@keyframes flow { to { stroke-dashoffset: -125; } } /* 10 Muster-Längen: nahtlos */
-
-.band-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; margin-left: auto; font-family: var(--sans); font-size: .86rem; letter-spacing: 0; color: var(--ink-2); }
-.band-legend > span { display: inline-flex; align-items: center; gap: 8px; }
-.band-legend__width { width: 40px; height: 12px; fill: var(--ink-2); }
-.band-legend__ramp { width: 90px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, #1d4c93, #4a8bd6 33%, #e4e0d6 66%, #ff4d1c); }
-
-/* Stichtag-Regler beim Urteil */
-.timeline { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 6px 20px; padding: 16px 20px 8px; background: var(--card); border-radius: var(--radius); margin-bottom: 28px; }
-.timeline__label { font-family: var(--sans); font-size: .86rem; letter-spacing: 0; color: var(--ink-3); display: flex; gap: 12px; align-items: baseline; }
-.timeline__label output { font-family: var(--sans); font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; text-transform: none; color: var(--ink); font-variant-numeric: tabular-nums; }
-.timeline input[type="range"] { grid-column: 1 / -1; width: 100%; height: 32px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
-/* Getrennte Regeln pro Browser: ein unbekannter Selektor würde die ganze Regel ungültig machen */
-.timeline input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: var(--rule-2); }
-.timeline input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; background: var(--signal); border: 3px solid var(--card); border-radius: 50%; }
-.timeline input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--rule-2); }
-.timeline input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; background: var(--signal); border: 3px solid var(--card); border-radius: 50%; }
-.timeline + .verdict .verdict__answer { border-top: 0; }
 
 /* Einen Fluss hervorheben: alle anderen werden blass */
 [data-station] { transition: opacity .25s ease, background-color .2s; }
@@ -512,7 +473,6 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 @media (prefers-reduced-motion: reduce) {
   .stripes__svg { clip-path: none; transition: none; }
   .chart, .tooltip, .station, [data-station] { transition: none; }
-  .band__flow { display: none; }
 }
 
 /* ---------- 8) Vergrösserte Ansicht (Dialog + Vollbild) --------- */
@@ -553,7 +513,9 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .pipeline li::before { margin: 0; }
   .pipeline li::after { top: 50%; left: -4px; transform: translateY(-50%); }
   .pipeline li span { font-size: 1rem; }
-  .diff-legend, .band-legend { margin-left: 0; }
+  .multiples__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .multiple:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .diff-legend { margin-left: 0; }
 }
 
 @media (max-width: 640px) {
@@ -562,7 +524,8 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .hero__side { grid-template-columns: minmax(0, 1fr); }
   .stats { grid-template-columns: minmax(0, 1fr); }
   .stripes__facts { grid-template-columns: minmax(0, 1fr); }
-  .band { padding: 14px 12px 8px; }
+  .multiples__grid { grid-template-columns: minmax(0, 1fr); }
+  .multiple, .multiple + .multiple { border-left: 0; padding-left: 0; padding-right: 0; }
   .columns { grid-template-columns: minmax(0, 1fr); }
   .glossary > div, .facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .station { grid-template-columns: minmax(0, 1fr); gap: 10px; }
@@ -579,7 +542,6 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .matrix td:last-child { text-align: left; }
   .matrix td:last-child::before { content: "geprüft "; color: var(--ink-3); } /* Tabellenkopf ist auf dem Handy ausgeblendet */
   .zoom { width: 100%; max-height: 100%; height: 100%; margin: 0; border: 0; }
-  .band__delta { order: 3; flex-basis: 100%; }
   .zoom__head { flex-direction: column; }
   .chart--zoom { height: 55vh; }
 }

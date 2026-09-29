@@ -5,9 +5,9 @@
  *
  *   Holen      unload.php fragen – nie die BAFU-API direkt
  *   Umformen   Datensätze nach Station gruppieren, 2022 und 2026 vergleichen
- *   Zeichnen   Temperatur-Streifen, Flussbänder, Zeitverlauf (D3)
+ *   Zeichnen   Flüsse im Einstieg, Jahresvergleich pro Fluss, Zeitverlauf (D3)
  *   Reagieren  Hover zeigt Tageswerte, ein Klick hebt einen Fluss überall
- *              hervor, der Regler schiebt den Stichtag des Urteils
+ *              hervor, man zeichnet selbst und tippt vor dem Urteil
  *
  * Jeder Datensatz aus unload.php hat genau die Felder des Datenvertrags:
  *
@@ -26,8 +26,8 @@
  *    4) Einstieg: Temperatur-Streifen
  *    5) Auf einen Blick: Kennzahlen
  *    6) Stationen
- *    7) Jahr gegen Jahr: Flussbänder, Detailansicht mit Vollbild
- *    8) Urteil, Stichtag-Regler, Hervorheben eines Flusses
+ *    7) Jahr gegen Jahr: eine Grafik pro Fluss, Vergrössern/Vollbild
+ *    8) Urteil mit Tipp, Hervorheben eines Flusses
  *    9) Explorer: Zeitverlauf aller Flüsse
  *   10) Tooltip, Crosshair, Resize, Lesefortschritt
  */
@@ -251,10 +251,7 @@ const state = {
   names: new Map(),      // station_no → { river_name, station_name } (aus den Daten)
   compareRecords: null,  // Datensätze 2022 und 2026, wie von unload.php geliefert
   cmp: null,             // Vergleich 2022/2026 bis zum letzten Messtag
-  cmpAt: null,           // Vergleich bis zum Stichtag des Reglers (Urteil)
   compare: { parameter: 'WT', smooth: 7 },
-  bands: [],             // gezeichnete Flussbänder (für Hover und Stichtag)
-  bandDay: null,         // Kalendertag unter der Maus, «MM-DD»
   focus: { hover: null, pinned: null }, // hervorgehobener Fluss
   zoom: { no: null },
   ts: { parameter: 'WT', days: '365', hidden: new Set(), records: null, range: null, request: 0 },
@@ -265,6 +262,7 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
   setupProgress();
   setupFocus();
+  setupSegmented('cmp-param-switch', 'param', (v) => setCompareOption('parameter', v));
   setupSegmented('cmp-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
   setupSegmented('zoom-param-switch', 'param', (v) => setCompareOption('parameter', v));
   setupSegmented('zoom-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
@@ -293,14 +291,13 @@ async function init() {
   }
   state.compareRecords = compare;
   state.cmp = buildCompare(compare);
-  state.cmpAt = state.cmp;
 
   renderStripes();
   setupDraw();
   renderStats();
   renderStationGroups();
-  renderBands();
-  setupTimeline();
+  renderMultiples();
+  renderVerdict();
   setupTip();
   renderFacts();
   renderLegend();
@@ -313,7 +310,7 @@ function fatal(err) {
   showToast(err.message);
   const msg = `Die Daten sind momentan nicht verfügbar: ${err.message}`;
   setStatus('ts-status', msg);
-  for (const id of ['stripes-rows', 'stats', 'station-groups', 'bands', 'verdict']) {
+  for (const id of ['stripes-rows', 'stats', 'station-groups', 'cmp-multiples', 'verdict']) {
     document.getElementById(id).replaceChildren(el('p', { class: 'muted' }, msg));
   }
 }
@@ -354,13 +351,12 @@ const displayName = (no) => {
 
 /**
  * Datensätze beider Jahre → Kennzahlen pro Station. Fair verglichen wird
- * immer derselbe Zeitraum: 1. Januar bis zum Stichtag. Ohne Angabe ist das
- * der letzte Messtag 2026, der Regler beim Urteil kann ihn zurückschieben.
+ * immer derselbe Zeitraum: 1. Januar bis zum Stichtag, dem letzten Messtag 2026.
  */
-function buildCompare(records, cutoffOverride = null) {
+function buildCompare(records) {
   const byNo = groupByStation(records);
   const curDates = records.filter((r) => r.date.startsWith(String(YEARS.cur))).map((r) => r.date);
-  const cutoff = cutoffOverride ?? (curDates.length ? d3.max(curDates).slice(5) : '12-31');
+  const cutoff = curDates.length ? d3.max(curDates).slice(5) : '12-31';
 
   const summarize = (recs) => {
     const upTo = recs.filter((r) => r.date.slice(5) <= cutoff);
@@ -552,8 +548,8 @@ function revealDraw() {
 /** Kalendertag «MM-DD» → Position im neutralen Schaltjahr 2000 (0 … 365) */
 const dayIndex = (md) => d3.utcDay.count(new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, Number(md.slice(0, 2)) - 1, Number(md.slice(3, 5)))));
 
-/** Ein kleiner gezeichneter Fisch, schwimmt nach rechts (Mitte bei 0,0) */
-const FISH_PATH = 'M-9 0c3-4.5 9-5 13-1.2L8-4v8L4 1.2C0 5-6 4.5-9 0Z';
+/** Ein kleiner gezeichneter Fisch: Kopf rechts, Schwanz links (Mitte bei 0,0) */
+const FISH_PATH = 'M9 0c-3-4.5-9-5-13-1.2L-8-4v8l4-2.8C0 5 6 4.5 9 0Z';
 
 /**
  * Einstieg: Die Thur fliesst zweimal durchs Bild, oben 2022, unten 2026.
@@ -710,7 +706,7 @@ function renderStats() {
 
   box.replaceChildren(
     tile(hot, 'sun', fmt0(hot.cur.summary.days_ge_25), 'Tage',
-      'mit einem Tagesmittel von 25 °C oder mehr',
+      'mit einem Tagesmittel von 25\u00a0°C oder mehr',
       `${YEARS.ref} im selben Zeitraum: ${fmt0(hot.ref.summary.days_ge_25)} Tage`),
     tile(warmest, 'thermo', fmtSigned(delta(warmest, 'wt_mean'), 1), '°C',
       `wärmer als ${YEARS.ref}, im Mittel über alle Tage`,
@@ -768,7 +764,7 @@ function drawSparklines() {
   });
 }
 
-/* ---------- 7) Jahr gegen Jahr: Flussbänder und Detailansicht ---- */
+/* ---------- 7) Jahr gegen Jahr ------------------------------------ */
 
 /**
  * Datensätze eines Jahres → Punkte für die Grafik. Die x-Position ist der
@@ -818,9 +814,9 @@ function seriesExtent(series) {
 /** Messgrösse / Glättung ändern – gilt für die Übersicht und die vergrösserte Ansicht */
 function setCompareOption(key, value) {
   state.compare[key] = value;
-  setSegmentedValue('zoom-param-switch', 'param', state.compare.parameter);
+  for (const id of ['cmp-param-switch', 'zoom-param-switch']) setSegmentedValue(id, 'param', state.compare.parameter);
   for (const id of ['cmp-smooth-switch', 'zoom-smooth-switch']) setSegmentedValue(id, 'smooth', state.compare.smooth);
-  renderBands();
+  renderMultiples();
   renderZoom();
 }
 
@@ -835,11 +831,47 @@ function diffLegend() {
   ];
 }
 
-/* ----- Flussbänder: jeder Fluss als Band ----- */
+function renderMultiples() {
+  if (!state.cmp) return;
+  const { parameter, smooth } = state.compare;
+  const isW = parameter === 'W';
+  const f = isW ? fmtCm : fmtTemp;
+  const cutoff = cutoffLabel();
+  const container = document.getElementById('cmp-multiples');
+
+  document.getElementById('cmp-title').textContent = `${PARAM_INFO[parameter].label}, ${smooth > 1 ? 'gleitendes 7-Tage-Mittel' : 'Tagesmittel'}`;
+  document.getElementById('cmp-unit').textContent = PARAM_INFO[parameter].axis;
+  document.getElementById('cmp-legend').replaceChildren(...diffLegend());
+  document.getElementById('cmp-note').textContent =
+    `Die gepunktete Linie markiert den ${cutoff}, bis hierhin reichen die Daten von ${YEARS.cur}. Alle Grafiken haben dieselbe Skala.` +
+    (smooth > 1 ? ' Das 7-Tage-Mittel glättet kurze Schwankungen; im Tooltip stehen die geglätteten Werte.' : '');
+
+  const series = cmpSeries();
+  const [yMin, yMax] = seriesExtent(series); // gemeinsame Skala → ehrlicher Vergleich
+
+  container.replaceChildren(...GROUPS.map((group) => el('div', { class: 'multiples__group' },
+    el('p', { class: 'multiples__group-title' }, group.title),
+    el('div', { class: 'multiples__grid' }, series.filter((s) => s.info.group === group.key).map((s) => {
+      const a = isW ? s.ref.summary.w_mean : s.ref.summary.wt_mean;
+      const b = isW ? s.cur.summary.w_mean : s.cur.summary.wt_mean;
+      const zoomBtn = el('button', { type: 'button', class: 'zoom-open', 'aria-label': `${displayName(s.no)} vergrössern` }, 'Gross ↗');
+      zoomBtn.addEventListener('click', () => openZoom(s.no));
+      return el('div', { class: 'multiple focusable', 'data-station': s.no },
+        el('div', { class: 'multiple__head' }, el('p', { class: 'multiple__title' }, keySwatch(s.no), displayName(s.no)), zoomBtn),
+        el('p', { class: 'multiple__sub' }, a != null && b != null
+          ? [`Mittel ${isW ? fmtSigned(a) : fmt1(a)} → `, el('strong', {}, f(b))] : 'keine Daten'),
+        el('div', { class: 'chart chart--multiple', tabindex: '0',
+          'aria-label': `${displayName(s.no)}: ${PARAM_INFO[parameter].label} ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` }));
+    })))));
+
+  for (const s of series) {
+    drawMultiple(container.querySelector(`.multiple[data-station="${s.no}"] .chart--multiple`), s, { yMin, yMax, isW, f });
+  }
+  applyFocus();
+}
 
 /**
- * Farbe der Wassertemperatur. Dieselbe Skala für alle Flüsse: So sieht man
- * auch, dass die Alpenflüsse kälter sind als die Mittellandflüsse.
+ * Farbe der Wassertemperatur für die Einstiegsgrafik: blau = kalt, rot = warm.
  */
 const tempColor = d3.scaleLinear()
   .domain([0, 8, 16, 24])
@@ -848,223 +880,9 @@ const tempColor = d3.scaleLinear()
   .clamp(true);
 
 const YEAR_START = new Date(Date.UTC(2000, 0, 1));
-const YEAR_END = new Date(Date.UTC(2000, 11, 31));
-
-/**
- * Datensätze eines Jahres → ein Eintrag pro Tag mit Temperatur und Pegel
- * (je nach Einstellung als 7-Tage-Mittel). Fehlende Tage werden als Lücke
- * eingefügt: Das Band reisst dort ab, statt eine Brücke zu schlagen.
- */
-function bandDays(records, year, smooth) {
-  const values = (param) => new Map(yearPoints(records, year, param, smooth)
-    .filter((p) => p.md).map((p) => [p.md, p.value]));
-  const wt = values('WT');
-  const w = values('W');
-  const days = [];
-  let prev = null;
-  for (const r of records) {
-    const md = r.date.slice(5);
-    const real = parseDate(r.date);
-    if (prev && d3.utcDay.count(prev, real) > 1) days.push({ x: d3.utcHour.offset(mdDate(md), -12), md: null, wt: null, w: null });
-    days.push({ x: mdDate(md), md, wt: wt.get(md) ?? null, w: w.get(md) ?? null });
-    prev = real;
-  }
-  return days;
-}
-
-function renderBands() {
-  if (!state.cmp) return;
-  const container = document.getElementById('bands');
-  const smooth = state.compare.smooth;
-  const charts = [];
-
-  container.replaceChildren(...GROUPS.map((group) => el('div', { class: 'bands__group' },
-    el('p', { class: 'bands__group-title' }, group.title),
-    state.cmp.stations.filter((s) => s.info.group === group.key).map((s) => {
-      const name = el('button', { type: 'button', class: 'band__name', 'aria-pressed': 'false', title: 'Klicken: diesen Fluss auf der ganzen Seite hervorheben' },
-        keySwatch(s.no), displayName(s.no));
-      name.addEventListener('click', () => togglePin(s.no));
-      const detail = el('button', { type: 'button', class: 'zoom-open', 'aria-label': `${displayName(s.no)}: Detailgrafik öffnen` }, 'Detail ↗');
-      detail.addEventListener('click', () => openZoom(s.no));
-      const chart = el('div', { class: 'chart band__chart', tabindex: '0',
-        'aria-label': `${displayName(s.no)}: Wassertemperatur und Wasserstand ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` });
-      charts.push({ s, chart });
-      const hottest = hottestDay(s.cur.records);
-      return el('div', { class: 'band focusable', 'data-station': s.no },
-        el('div', { class: 'band__head' }, name,
-          el('span', { class: 'band__delta' },
-            `${YEARS.cur} im Schnitt ${fmtSigned(delta(s, 'wt_mean'), 1)} °C und ${fmtCm(delta(s, 'w_mean'))}`),
-          detail),
-        hottest ? el('p', { class: 'band__hot' }, icon('thermo'), `Heissester Tag ${YEARS.cur}: `,
-          el('strong', {}, fmtTemp(hottest.water_temperature_c)), ` am ${fmtDayMonth(parseDate(hottest.date))}`) : null,
-        chart);
-    }))));
-
-  state.bands = charts.map(({ s, chart }) => drawBand(chart, s, smooth)).filter(Boolean);
-  for (const band of state.bands) band.setCut(state.cmpAt.cutoff);
-  applyFocus();
-}
 
 /** Der Tag mit dem höchsten Tagesmittel der Wassertemperatur */
 const hottestDay = (records) => d3.greatest(records.filter((r) => r.water_temperature_c != null), (r) => r.water_temperature_c);
-
-/**
- * Ein Fluss, zwei Bänder: oben 2022, unten 2026, auf derselben Zeitachse.
- *   Breite = Wasserstand (dünn = tief). Die Skala gilt pro Fluss für beide Jahre.
- *   Farbe  = Wassertemperatur (blau = kalt, rot = warm), Tag für Tag.
- * Hinter dem Stichtag wird abgedunkelt: Dort wird nicht verglichen.
- */
-function drawBand(chart, s, smooth) {
-  d3.select(chart).selectAll('svg').remove();
-  const width = chart.clientWidth;
-  const small = width < 560;
-  const lane = small ? 36 : 48;
-  const gap = small ? 8 : 12;
-  const m = { top: 2, right: 2, bottom: 20, left: small ? 34 : 42 };
-  const innerW = width - m.left - m.right;
-  const innerH = lane * 2 + gap;
-  if (innerW < 80) return null; // Grafik (noch) nicht sichtbar
-  const height = innerH + m.top + m.bottom;
-  chart.style.height = `${height}px`;
-
-  const x = d3.scaleUtc().domain([YEAR_START, YEAR_END]).range([0, innerW]);
-  const years = [
-    { year: YEARS.ref, days: bandDays(s.ref.records, YEARS.ref, smooth), mid: lane / 2 },
-    { year: YEARS.cur, days: bandDays(s.cur.records, YEARS.cur, smooth), mid: lane + gap + lane / 2 },
-  ];
-
-  // Breite: vom tiefsten zum höchsten Pegel dieses Flusses (ohne die extremsten 2 %)
-  const levels = years.flatMap((y) => y.days.map((d) => d.w)).filter((v) => v != null).sort(d3.ascending);
-  const thick = d3.scaleLinear()
-    .domain([d3.quantileSorted(levels, 0.02) ?? 0, d3.quantileSorted(levels, 0.98) ?? 1])
-    .range([3, lane - 4])
-    .clamp(true);
-
-  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
-  const defs = svg.append('defs');
-  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
-
-  g.append('g').attr('class', 'band-grid').selectAll('line').data(d3.utcMonths(YEAR_START, YEAR_END)).join('line')
-    .attr('x1', (d) => x(d)).attr('x2', (d) => x(d)).attr('y1', 0).attr('y2', innerH);
-  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
-    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(small ? 2 : 1)).tickSize(0).tickPadding(7).tickFormat(locale.utcFormat('%b')));
-
-  for (const y of years) {
-    const id = `band-${++clipId}`;
-    const area = d3.area().defined((d) => d.w != null).curve(d3.curveBasis)
-      .x((d) => x(d.x)).y0((d) => y.mid - thick(d.w) / 2).y1((d) => y.mid + thick(d.w) / 2);
-
-    // Farbverlauf mit einem Halt pro Tag – jede Farbe ist ein echter Tageswert
-    defs.append('linearGradient').attr('id', `${id}-color`).attr('gradientUnits', 'userSpaceOnUse')
-      .attr('x1', 0).attr('x2', innerW).attr('y1', 0).attr('y2', 0)
-      .selectAll('stop').data(y.days.filter((d) => d.md)).join('stop')
-      .attr('offset', (d) => x(d.x) / innerW)
-      .attr('stop-color', (d) => (d.wt == null ? '#3a4450' : tempColor(d.wt)));
-    defs.append('clipPath').attr('id', `${id}-clip`).append('path').attr('d', area(y.days));
-
-    g.append('path').attr('class', 'band__body').attr('d', area(y.days)).attr('fill', `url(#${id}-color)`);
-
-    // Strömung: zwei feine Linien im Band, die langsam nach rechts wandern
-    const flow = g.append('g').attr('class', 'band__flow').attr('clip-path', `url(#${id}-clip)`);
-    for (const k of [-0.22, 0.22]) {
-      flow.append('path').attr('d', d3.line().defined((d) => d.w != null).curve(d3.curveBasis)
-        .x((d) => x(d.x)).y((d) => y.mid + k * thick(d.w))(y.days));
-    }
-
-    g.append('text').attr('class', 'band__year').attr('x', -8).attr('y', y.mid).attr('dy', '0.35em')
-      .attr('text-anchor', 'end').text(y.year);
-
-    // Punkt auf dem heissesten Tag des Jahres
-    const hot = hottestDay(y.year === YEARS.cur ? s.cur.records : s.ref.records);
-    const hotDay = hot && y.days.find((d) => d.md === hot.date.slice(5));
-    if (y.year === YEARS.cur && hotDay?.w != null) {
-      g.append('circle').attr('class', 'band__marker').attr('r', small ? 4 : 5)
-        .attr('cx', x(hotDay.x)).attr('cy', y.mid);
-    }
-  }
-
-  // Stichtag
-  const after = g.append('rect').attr('class', 'band__after').attr('y', -1).attr('height', innerH + 2);
-  const cut = g.append('line').attr('class', 'cutoff-line').attr('y1', -1).attr('y2', innerH + 1);
-  const setCut = (md) => {
-    const cx = Math.min(innerW, x(d3.utcHour.offset(mdDate(md), 12)));
-    after.attr('x', cx).attr('width', Math.max(0, innerW - cx));
-    cut.attr('x1', cx).attr('x2', cx);
-  };
-
-  // Hover: eine senkrechte Linie, in allen Bändern am selben Tag
-  const rule = g.append('line').attr('class', 'crosshair').attr('y1', -1).attr('y2', innerH + 1).style('display', 'none');
-  const byMd = years.map((y) => new Map(y.days.filter((d) => d.md).map((d) => [d.md, d])));
-  const tooltip = getTooltip(chart);
-
-  const band = {
-    no: s.no, chart,
-    setCut,
-    showDay(md, withTooltip) {
-      const px = x(mdDate(md));
-      rule.style('display', null).attr('x1', px).attr('x2', px);
-      if (withTooltip) tooltip.show(bandTooltip(s.no, byMd, md), px + m.left, m.top + innerH / 2);
-      else tooltip.hide();
-    },
-    hideDay() {
-      rule.style('display', 'none');
-      tooltip.hide();
-    },
-  };
-
-  const dayAt = (event) => {
-    const [mx] = d3.pointer(event, g.node());
-    const date = x.invert(Math.max(0, Math.min(innerW, mx)));
-    return fmtMd(d3.utcDay.round(date) > YEAR_END ? YEAR_END : d3.utcDay.round(date));
-  };
-  g.append('rect').attr('width', innerW).attr('height', innerH).attr('fill', 'transparent').style('cursor', 'crosshair')
-    .on('pointermove pointerdown', (event) => showBandDay(dayAt(event), band))
-    .on('pointerleave', (event) => { if (event.pointerType === 'mouse') hideBandDay(); });
-
-  chart.onkeydown = (event) => {
-    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      event.preventDefault();
-      const step = (event.shiftKey ? 7 : 1) * (event.key === 'ArrowRight' ? 1 : -1);
-      const current = state.bandDay ? mdDate(state.bandDay) : mdDate(state.cmp.cutoff);
-      const next = d3.utcDay.offset(current, state.bandDay ? step : 0);
-      showBandDay(fmtMd(next < YEAR_START ? YEAR_START : next > YEAR_END ? YEAR_END : next), band);
-    } else if (event.key === 'Escape') {
-      hideBandDay();
-    }
-  };
-  chart.onblur = hideBandDay;
-
-  return band;
-}
-
-/** Denselben Tag in allen Bändern zeigen, die Werte nur beim aktiven Fluss */
-function showBandDay(md, active) {
-  state.bandDay = md;
-  for (const band of state.bands) band.showDay(md, band === active);
-}
-
-function hideBandDay() {
-  state.bandDay = null;
-  for (const band of state.bands) band.hideDay();
-}
-
-/** Werte eines Tages: Temperatur und Pegel beider Jahre und die Differenz */
-function bandTooltip(no, byMd, md) {
-  const [r, c] = byMd.map((map) => map.get(md));
-  const value = (v, f) => (v == null ? '–' : f(v));
-  // Differenz aus den angezeigten (gerundeten) Werten, damit sie nachrechenbar ist
-  const dT = r?.wt != null && c?.wt != null ? roundShown(roundShown(c.wt, 1) - roundShown(r.wt, 1), 1) : null;
-  const dW = r?.w != null && c?.w != null ? roundShown(c.w) - roundShown(r.w) : null;
-  const row = (label, t, w, cls = '') => el('tr', { class: cls }, el('th', {}, label), el('td', {}, t), el('td', {}, w));
-  return el('div', {},
-    el('div', { class: 'tooltip__date' }, `${state.names.get(no).river_name}, ${fmtDayMonth(mdDate(md))}`),
-    el('table', { class: 'tooltip__table' },
-      el('thead', {}, row('', 'Wasser', 'Pegel')),
-      el('tbody', {},
-        row(String(YEARS.ref), value(r?.wt, fmtTemp), value(r?.w, fmtCm)),
-        row(String(YEARS.cur), value(c?.wt, fmtTemp), value(c?.w, fmtCm)),
-        row('Differenz', dT == null ? '–' : `${fmtSigned(dT, 1)} °C`, dW == null ? '–' : fmtCm(dW), 'is-diff'))));
-}
 
 let clipId = 0;
 
@@ -1256,8 +1074,8 @@ function verdictOf(cmp) {
     lead: `Keiner der Mittelland-Flüsse war ${YEARS.cur} bis ${cutoff} wärmer und tiefer als ${YEARS.ref}.` };
 }
 
-/** Urteil zum Stichtag des Reglers (ohne Regler: bis zum letzten Messtag) */
-function renderVerdict(cmp = state.cmpAt) {
+/** Urteil: verglichen wird vom 1. Januar bis zum letzten Messtag */
+function renderVerdict(cmp = state.cmp) {
   const box = document.getElementById('verdict');
   const ml = inGroup('mittelland', cmp);
   const al = inGroup('alpen', cmp);
@@ -1296,38 +1114,6 @@ function renderVerdict(cmp = state.cmpAt) {
       `Verglichen werden die Mittelwerte vom 1. Januar bis ${cutoff}. Viele Werte von ${YEARS.cur} sind vom BAFU noch nicht geprüft, und das Jahr ist nicht vorbei. `,
       'Die Alpenflüsse gehören nicht zur These. Sie zeigen, dass Schmelzwasser anders auf einen heissen Sommer reagiert.'));
   applyFocus();
-}
-
-/* ----- Stichtag-Regler und Zeitraffer ----- */
-
-/**
- * Der Regler schiebt den Stichtag zwischen 1. Februar und dem letzten
- * Messtag 2026. Urteil und Flussbänder rechnen sofort mit: So sieht man,
- * ab wann die These gestimmt hätte.
- */
-function setupTimeline() {
-  const range = document.getElementById('timeline-range');
-  const output = document.getElementById('timeline-output');
-  const first = new Date(Date.UTC(2000, 1, 1)); // vorher sind die Mittelwerte zu kurz
-  const last = mdDate(state.cmp.cutoff);
-  const maxIndex = Math.max(0, d3.utcDay.count(first, last));
-
-  range.min = '0';
-  range.max = String(maxIndex);
-
-  const set = (i) => {
-    const md = fmtMd(d3.utcDay.offset(first, i));
-    const label = `${fmtDayMonth(mdDate(md))} ${YEARS.cur}`;
-    range.value = String(i);
-    range.setAttribute('aria-valuetext', label);
-    output.textContent = label;
-    state.cmpAt = i === maxIndex ? state.cmp : buildCompare(state.compareRecords, md);
-    renderVerdict();
-    for (const band of state.bands) band.setCut(md);
-  };
-  range.addEventListener('input', () => set(Number(range.value)));
-
-  set(maxIndex);
 }
 
 /* ----- Zuerst tippen, dann das Urteil ----- */
@@ -1380,10 +1166,6 @@ function setupFocus() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && state.focus.pinned) togglePin(null);
   });
-  // Touch: Tippen ausserhalb der Flussbänder schliesst deren Werte
-  document.addEventListener('pointerdown', (event) => {
-    if (state.bandDay && !event.target.closest('#bands')) hideBandDay();
-  }, { passive: true });
   document.getElementById('focus-pill').addEventListener('click', () => togglePin(null));
 }
 
@@ -1397,9 +1179,6 @@ function applyFocus() {
   document.querySelectorAll('[data-station]').forEach((node) => {
     node.classList.toggle('is-dim', active != null && node.dataset.station !== active);
     node.classList.toggle('is-focus', active != null && node.dataset.station === active);
-  });
-  document.querySelectorAll('.band__name').forEach((button) => {
-    button.setAttribute('aria-pressed', String(button.closest('[data-station]')?.dataset.station === state.focus.pinned));
   });
   const pill = document.getElementById('focus-pill');
   if (state.focus.pinned && state.names.has(state.focus.pinned)) {
@@ -1752,7 +1531,7 @@ function setupResize() {
       renderStripes();
       drawSparklines();
       renderDraw();
-      renderBands();
+      renderMultiples();
       renderZoom();
       renderTimeseries();
     });
