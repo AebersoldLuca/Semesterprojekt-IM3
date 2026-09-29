@@ -4,7 +4,8 @@
    Gestaltungsidee: Schweizer Typografie und Datenjournalismus.
    Strenges Raster mit Randspalte, Haarlinien statt Boxen, drei Schriften
    mit klaren Rollen (Grotesk für Text, Serif-Kursive als Akzent, Mono für
-   Daten) und eine einzige Signalfarbe. Immer im Dark Mode.
+   Daten) und eine einzige Signalfarbe für «wärmer». Immer im Dark Mode,
+   in einem tiefen Blau-Schwarz wie Wasser bei Nacht.
 
    Aufbau: 1) Tokens  2) Basis  3) Einstieg  4) Raster & Sektionen
            5) Inhalte  6) Steuerung  7) Grafiken  8) Dialog  9) Responsive
@@ -14,18 +15,18 @@
 :root {
   color-scheme: dark;
 
-  --bg:        #0b0b0a;
-  --bg-2:      #131311;   /* Hover, Tooltip */
-  --ink:       #ece9e2;   /* Text */
-  --ink-2:     #a9a69d;   /* sekundärer Text */
-  --ink-3:     #6f6d67;   /* Achsen, Labels */
-  --rule:      #2a2926;   /* Haarlinien */
-  --rule-2:    #3d3c38;
-  --grid:      #1e1e1c;   /* Gitter in Grafiken */
+  --bg:        #07090c;
+  --bg-2:      #0e141b;   /* Hover, hervorgehobene Zeilen */
+  --ink:       #e7ebee;   /* Text */
+  --ink-2:     #9ba6b1;   /* sekundärer Text */
+  --ink-3:     #637080;   /* Achsen, Labels */
+  --rule:      #19212a;   /* Haarlinien */
+  --rule-2:    #2b3642;
+  --grid:      #121920;   /* Gitter in Grafiken */
 
-  --signal:    #ff4d1c;   /* einzige Akzentfarbe: warm, stützt die These */
-  --cool:      #3a7bd5;   /* Gegenrichtung */
-  --year-ref:  #7d7b74;   /* Vergleichsjahr 2022 */
+  --signal:    #ff4d1c;   /* einzige Akzentfarbe: wärmer, stützt die These */
+  --cool:      #4a8bd6;   /* Gegenrichtung */
+  --year-ref:  #74808c;   /* Vergleichsjahr 2022 */
 
   /* Kategorische Farben der Stationen – für dunklen Hintergrund validiert
      (CVD-sicher in dieser Reihenfolge). Farbe folgt der Station, nie dem Rang. */
@@ -324,18 +325,9 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 .crosshair { stroke: var(--ink); stroke-width: 1; }
 .hover-dot { stroke: var(--bg); stroke-width: 2; }
 
-/* Jahr gegen Jahr: Raster aus Grafiken, getrennt durch Haarlinien */
-.multiples { display: flex; flex-direction: column; gap: 8px; }
-.multiples__group-title { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 18px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule-2); }
-.multiples__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.multiple { padding: 16px 18px 10px 0; border-bottom: 1px solid var(--rule); }
-.multiple + .multiple { border-left: 1px solid var(--rule); padding-left: 18px; }
-.multiple__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.multiple__title { display: flex; align-items: baseline; gap: 8px; margin: 0; font-weight: 600; font-size: 1.05rem; letter-spacing: -0.02em; }
-.multiple__title .key { width: 8px; height: 8px; display: inline-block; transform: translateY(-1px); }
+/* Detailansicht (Dialog): Linien 2022/2026 und eingefärbte Differenz */
 .multiple__sub { font-family: var(--mono); font-size: .7rem; color: var(--ink-3); margin: 4px 0 6px; }
 .multiple__sub strong { color: var(--ink); font-weight: 500; }
-.chart--multiple { height: 210px; }
 .line--ref { fill: none; stroke: var(--year-ref); stroke-width: 1.25; }
 .line--cur { fill: none; stroke: var(--ink); stroke-width: 1.75; stroke-linejoin: round; }
 .diff--warm { fill: var(--signal); opacity: .55; }
@@ -348,6 +340,72 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3);
 }
 .zoom-open:hover { color: var(--signal); }
+
+/* Flussbänder: jeder Fluss als Band, Breite = Pegel, Farbe = Temperatur */
+.bands { display: flex; flex-direction: column; }
+.bands__group-title { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 22px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--rule-2); }
+.bands__group:first-child .bands__group-title { margin-top: 4px; }
+.band { padding: 14px 0 8px; border-bottom: 1px solid var(--rule); }
+.band__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.band__head .zoom-open { margin-left: auto; }
+.band__name {
+  appearance: none; background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink);
+  display: inline-flex; align-items: baseline; gap: 8px;
+  font: inherit; font-weight: 600; font-size: 1.1rem; letter-spacing: -0.02em;
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 5px; transition: text-decoration-color .2s;
+}
+.band__name:hover { text-decoration-color: var(--rule-2); }
+.band__name[aria-pressed="true"] { text-decoration-color: var(--signal); }
+.band__name .key { width: 8px; height: 8px; display: inline-block; transform: translateY(-1px); }
+.band__delta { font-family: var(--mono); font-size: .72rem; color: var(--ink-2); }
+.chart.band__chart { height: auto; margin-top: 8px; }
+.band-grid line { stroke: var(--grid); }
+.band__year { fill: var(--ink-2); font-family: var(--mono); font-size: 10.5px; }
+.band__after { fill: var(--bg); opacity: .74; pointer-events: none; }
+.band__flow path {
+  fill: none; stroke: rgba(255, 255, 255, .5); stroke-width: 1; stroke-linecap: round;
+  stroke-dasharray: 1.5 11; animation: flow 5s linear infinite;
+}
+@keyframes flow { to { stroke-dashoffset: -125; } } /* 10 Muster-Längen: nahtlos */
+
+.band-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; margin-left: auto; font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.band-legend > span { display: inline-flex; align-items: center; gap: 8px; }
+.band-legend__width { width: 40px; height: 12px; fill: var(--ink-2); }
+.band-legend__ramp { width: 90px; height: 6px; background: linear-gradient(90deg, #1d4c93, #4a8bd6 33%, #e4e0d6 66%, #ff4d1c); }
+
+/* Stichtag-Regler beim Urteil */
+.timeline { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 20px; padding: 14px 0 6px; border-top: 1px solid var(--ink); }
+.timeline__play {
+  appearance: none; border: 1px solid var(--rule-2); background: transparent; color: var(--ink); cursor: pointer;
+  font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+  min-height: 36px; padding: 0 14px; white-space: nowrap; transition: border-color .15s;
+}
+.timeline__play:hover { border-color: var(--ink); }
+.timeline__play[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.timeline__label { font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); display: flex; gap: 12px; align-items: baseline; }
+.timeline__label output { font-family: var(--sans); font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; text-transform: none; color: var(--ink); font-variant-numeric: tabular-nums; }
+.timeline input[type="range"] { grid-column: 1 / -1; width: 100%; height: 32px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+/* Getrennte Regeln pro Browser: ein unbekannter Selektor würde die ganze Regel ungültig machen */
+.timeline input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: var(--rule-2); }
+.timeline input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -7px; background: var(--signal); border: 0; border-radius: 0; }
+.timeline input[type="range"]::-moz-range-track { height: 2px; background: var(--rule-2); }
+.timeline input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: var(--signal); border: 0; border-radius: 0; }
+.timeline + .verdict .verdict__answer { border-top: 0; }
+
+/* Einen Fluss hervorheben: alle anderen werden blass */
+[data-station] { transition: opacity .25s ease, background-color .2s; }
+.is-dim { opacity: .24; }
+.station.is-focus, .matrix tr.is-focus { background: var(--bg-2); }
+.focusable[data-pin] { cursor: pointer; }
+.focus-pill {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 65;
+  display: inline-flex; align-items: center; gap: 10px; max-width: calc(100% - 32px);
+  appearance: none; border: 1px solid var(--ink); background: var(--bg); color: var(--ink); cursor: pointer;
+  font-family: var(--mono); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; padding: 10px 14px;
+}
+.focus-pill:hover { background: var(--ink); color: var(--bg); }
+.focus-pill .key { width: 8px; height: 8px; flex: none; }
+.focus-pill[hidden] { display: none; }
 
 /* Tooltip */
 .tooltip {
@@ -362,6 +420,12 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 .tooltip__key { width: 8px; height: 8px; align-self: center; }
 .tooltip__name small { display: block; font-family: var(--mono); font-size: .68rem; opacity: .65; }
 .tooltip__value { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.tooltip__table { width: auto; font-size: .82rem; }
+.tooltip__table th, .tooltip__table td { padding: 4px 0 4px 14px; border-bottom: 1px solid rgba(7, 9, 12, .14); text-align: right; white-space: nowrap; }
+.tooltip__table th:first-child { padding-left: 0; text-align: left; font-family: var(--mono); font-weight: 500; font-size: .72rem; }
+.tooltip__table thead th { font-family: var(--mono); font-size: .64rem; font-weight: 400; text-transform: uppercase; letter-spacing: .04em; color: inherit; opacity: .6; padding-top: 0; }
+.tooltip__table td { font-weight: 700; }
+.tooltip__table .is-diff th, .tooltip__table .is-diff td { border-bottom: 0; }
 
 /* Werte-Panel unter der Explorer-Grafik (nur schmale Bildschirme, siehe script.js) */
 .tooltip-dock { margin-top: 10px; padding: 10px 0; min-height: 64px; border-top: 1px solid var(--ink); font-size: .84rem; }
@@ -373,7 +437,8 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 
 @media (prefers-reduced-motion: reduce) {
   .stripes__svg { clip-path: none; transition: none; }
-  .chart, .tooltip, .station { transition: none; }
+  .chart, .tooltip, .station, [data-station] { transition: none; }
+  .band__flow { display: none; }
 }
 
 /* ---------- 8) Vergrösserte Ansicht (Dialog + Vollbild) --------- */
@@ -381,7 +446,7 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   width: min(1200px, calc(100% - 32px)); max-width: none; max-height: calc(100% - 32px);
   padding: 0; border: 1px solid var(--ink); background: var(--bg); color: var(--ink);
 }
-.zoom::backdrop { background: rgba(0, 0, 0, .8); }
+.zoom::backdrop { background: rgba(3, 5, 8, .85); }
 .zoom__inner { padding: clamp(16px, 3vw, 32px); background: var(--bg); }
 .zoom__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .zoom__title { display: flex; align-items: baseline; gap: 12px; font-size: clamp(1.6rem, 3.4vw, 2.8rem); letter-spacing: -0.04em; }
@@ -406,8 +471,6 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .section { grid-template-columns: minmax(0, 1fr); }
   .section__label { position: static; margin-bottom: 20px; }
   .hero__side { width: 100%; }
-  .multiples__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .multiple:nth-child(odd) { border-left: 0; padding-left: 0; }
   .station { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 216px; }
   .station__role { grid-column: 1 / -1; order: 3; }
   /* Datenfluss senkrecht: eine Linie links, ein Schritt pro Zeile */
@@ -416,7 +479,7 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .pipeline li::before { margin: 0; }
   .pipeline li::after { top: 50%; left: -4px; transform: translateY(-50%); }
   .pipeline li span { font-size: 1rem; }
-  .diff-legend { margin-left: 0; }
+  .diff-legend, .band-legend { margin-left: 0; }
 }
 
 @media (max-width: 640px) {
@@ -427,8 +490,6 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .stat + .stat { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); margin-top: 24px; }
   .columns { grid-template-columns: minmax(0, 1fr); }
   .glossary > div, .facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  .multiples__grid { grid-template-columns: minmax(0, 1fr); }
-  .multiple, .multiple + .multiple { border-left: 0; padding-left: 0; padding-right: 0; }
   .station { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .station__role { order: 0; }
   .toolbar { gap: 8px; }
@@ -443,6 +504,9 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .matrix td:last-child { text-align: left; }
   .matrix td:last-child::before { content: "geprüft "; color: var(--ink-3); } /* Tabellenkopf ist auf dem Handy ausgeblendet */
   .zoom { width: 100%; max-height: 100%; height: 100%; margin: 0; border: 0; }
+  .timeline { grid-template-columns: minmax(0, 1fr); }
+  .timeline__play { justify-self: start; }
+  .band__delta { order: 3; flex-basis: 100%; }
   .zoom__head { flex-direction: column; }
   .chart--zoom { height: 55vh; }
 }
