@@ -6,12 +6,12 @@
   <title>Heisser als der Hitzesommer · Schweizer Flüsse 2022 und 2026</title>
   <meta name="description" content="Eine DataStory mit Messdaten des BAFU: Waren die Flüsse im Mittelland 2026 wärmer und führten sie weniger Wasser als im Hitzesommer 2022?">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0b0b0a">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0b0a'/%3E%3Crect x='6' y='18' width='4' height='8' fill='%233a7bd5'/%3E%3Crect x='14' y='12' width='4' height='14' fill='%23ece9e2'/%3E%3Crect x='22' y='6' width='4' height='20' fill='%23ff4d1c'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#07090c">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090c'/%3E%3Crect x='6' y='18' width='4' height='8' fill='%233a7bd5'/%3E%3Crect x='14' y='12' width='4' height='14' fill='%23ece9e2'/%3E%3Crect x='22' y='6' width='4' height='20' fill='%23ff4d1c'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -132,30 +132,32 @@
   <div class="section__body">
     <h2 id="jahresvergleich-title">Jahr gegen Jahr</h2>
     <p class="section__lead">
-      Grau ist 2022, weiss ist 2026. Wo 2026 wärmer war oder tiefer lag, ist die Fläche dazwischen rot.
-      Blau heisst das Gegenteil. Mit der Maus oder dem Finger lassen sich einzelne Tage ablesen.
+      Jeder Fluss als Band: oben 2022, unten 2026. Je dünner das Band, desto tiefer der Wasserstand.
+      Je röter, desto wärmer das Wasser. Mit der Maus oder dem Finger lässt sich jeder Tag ablesen.
     </p>
 
-    <div class="toolbar" role="group" aria-label="Einstellungen Jahresvergleich">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="cmp-param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Temperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
+    <div class="toolbar" role="group" aria-label="Einstellungen Flussbänder">
       <div class="segmented" role="radiogroup" aria-label="Darstellung" id="cmp-smooth-switch">
         <button type="button" role="radio" aria-checked="true"  data-smooth="7">7-Tage-Mittel</button>
         <button type="button" role="radio" aria-checked="false" data-smooth="1">Tageswerte</button>
       </div>
-      <div class="diff-legend" id="cmp-legend" aria-hidden="true"></div>
+      <div class="band-legend" aria-hidden="true">
+        <span>
+          <svg class="band-legend__width" viewBox="0 0 64 18"><path d="M0 8.2 C18 8.2 30 1 64 1 L64 17 C30 17 18 9.8 0 9.8 Z"/></svg>
+          Breite = Wasserstand
+        </span>
+        <span>0 °C <span class="band-legend__ramp"></span> 24 °C</span>
+      </div>
     </div>
 
-    <p class="chart-title">
-      <span id="cmp-title">Wassertemperatur</span>
-      <span class="chart-title__unit" id="cmp-unit">in °C</span>
-    </p>
-    <div class="multiples" id="cmp-multiples">
-      <p class="muted">Vergleich wird geladen …</p>
+    <div class="bands" id="bands">
+      <p class="muted">Flussbänder werden geladen …</p>
     </div>
-    <p class="note" id="cmp-note"></p>
+    <p class="note">
+      Die Breite ist pro Fluss skaliert, vom tiefsten bis zum höchsten Pegel beider Jahre. Die Farbe hat für alle
+      Flüsse dieselbe Skala. Abgedunkelt ist alles nach dem Stichtag: Dort wird nicht verglichen.
+      «Detail» zeigt die Werte als Linien. Ein Klick auf den Namen hebt den Fluss auf der ganzen Seite hervor.
+    </p>
   </div>
 </section>
 
@@ -166,7 +168,15 @@
   <p class="section__label"><span>04</span>Urteil</p>
   <div class="section__body">
     <h2 id="urteil-title">Stimmt die These?</h2>
-    <div class="verdict" id="verdict" aria-live="polite">
+    <p class="section__lead">Zieh den Stichtag zurück oder spiel das Jahr ab: Ab wann hätte die These gestimmt?</p>
+    <div class="timeline">
+      <button type="button" class="timeline__play" id="timeline-play" aria-pressed="false">▶ Jahr abspielen</button>
+      <label class="timeline__label" for="timeline-range">
+        Stichtag <output id="timeline-output" for="timeline-range">–</output>
+      </label>
+      <input type="range" id="timeline-range" min="0" max="0" step="1" value="0">
+    </div>
+    <div class="verdict" id="verdict">
       <p class="muted">Urteil wird berechnet …</p>
     </div>
   </div>
@@ -267,6 +277,7 @@
 
 <!-- Vergrösserte Ansicht eines Flusses -->
 <dialog class="zoom" id="zoom" aria-labelledby="zoom-title">
+  <!-- Detailansicht eines Flusses: Linien 2022/2026 und eingefärbte Differenz -->
   <div class="zoom__inner">
     <div class="zoom__head">
       <h2 class="zoom__title" id="zoom-title">Fluss</h2>
@@ -294,10 +305,11 @@
   </div>
 </dialog>
 
+<button type="button" class="focus-pill" id="focus-pill" hidden></button>
 <div class="toast" id="toast" role="alert" hidden></div>
 
 <!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN, alle DATEN kommen aus unload.php. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=10" defer></script>
+<script src="script.js?v=11" defer></script>
 </body>
 </html>
