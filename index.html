@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 
@@ -157,32 +157,30 @@
   <div class="section__body">
     <h2 id="jahresvergleich-title">Wer hat mehr geschwitzt?</h2>
     <p class="section__lead">
-      Jeder Fluss fliesst hier als Band durchs Jahr, oben 2022, unten 2026. Wird das Band dünn, führt der Fluss
-      wenig Wasser. Wird es rot, ist das Wasser warm. Fahr mit der Maus oder dem Finger darüber.
+      Grau ist 2022, weiss ist 2026. Wo 2026 wärmer war oder tiefer lag, ist die Fläche dazwischen rot.
+      Blau heisst das Gegenteil. Mit der Maus oder dem Finger lassen sich einzelne Tage ablesen.
     </p>
 
-    <div class="toolbar" role="group" aria-label="Einstellungen Flussbänder">
+    <div class="toolbar" role="group" aria-label="Einstellungen Jahresvergleich">
+      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="cmp-param-switch">
+        <button type="button" role="radio" aria-checked="true"  data-param="WT">Temperatur</button>
+        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
+      </div>
       <div class="segmented" role="radiogroup" aria-label="Darstellung" id="cmp-smooth-switch">
         <button type="button" role="radio" aria-checked="true"  data-smooth="7">7-Tage-Mittel</button>
         <button type="button" role="radio" aria-checked="false" data-smooth="1">Tageswerte</button>
       </div>
-      <div class="band-legend" aria-hidden="true">
-        <span>
-          <svg class="band-legend__width" viewBox="0 0 64 18"><path d="M0 8.2 C18 8.2 30 1 64 1 L64 17 C30 17 18 9.8 0 9.8 Z"/></svg>
-          Breite = Wasserstand
-        </span>
-        <span>0 °C <span class="band-legend__ramp"></span> 24 °C</span>
-      </div>
+      <div class="diff-legend" id="cmp-legend" aria-hidden="true"></div>
     </div>
 
-    <div class="bands" id="bands">
-      <p class="muted">Flussbänder werden geladen …</p>
-    </div>
-    <p class="note">
-      Die Breite ist pro Fluss skaliert, vom tiefsten bis zum höchsten Pegel beider Jahre. Die Farbe hat für alle
-      Flüsse dieselbe Skala. Abgedunkelt ist alles nach dem Stichtag: Dort wird nicht verglichen.
-      «Detail» zeigt die Werte als Linien. Ein Klick auf den Namen hebt den Fluss auf der ganzen Seite hervor.
+    <p class="chart-title">
+      <span id="cmp-title">Wassertemperatur</span>
+      <span class="chart-title__unit" id="cmp-unit">in °C</span>
     </p>
+    <div class="multiples" id="cmp-multiples">
+      <p class="muted">Vergleich wird geladen …</p>
+    </div>
+    <p class="note" id="cmp-note"></p>
   </div>
 </section>
 
@@ -206,13 +204,6 @@
 
     <div class="reveal-body" id="verdict-body" tabindex="-1" hidden>
     <p class="tip-feedback" id="tip-feedback" hidden></p>
-    <p class="section__lead">Zieh den Stichtag zurück: Ab wann hätte die These gestimmt?</p>
-    <div class="timeline">
-      <label class="timeline__label" for="timeline-range">
-        Stichtag <output id="timeline-output" for="timeline-range">–</output>
-      </label>
-      <input type="range" id="timeline-range" min="0" max="0" step="1" value="0">
-    </div>
     <div class="verdict" id="verdict">
       <p class="muted">Urteil wird berechnet …</p>
     </div>
@@ -348,6 +339,6 @@
 
 <!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN, alle DATEN kommen aus unload.php. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=13" defer></script>
+<script src="script.js?v=15" defer></script>
 </body>
 </html>
