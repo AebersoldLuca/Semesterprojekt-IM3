@@ -621,12 +621,12 @@ function renderStripes() {
     const hot = hottestDay(days.filter((r) => r.date.slice(5) <= cutoff));
     if (hot) {
       const hx = x(dayIndex(hot.date.slice(5)) + 0.5);
-      const right = hx > width - 110;
+      const right = hx > width - (small ? 150 : 190); // Text passt rechts nicht mehr hin → links vom Symbol
       const sun = svg.append('g').attr('class', 'hero-sun')
-        .attr('transform', `translate(${hx},${Math.max(12, cy(hx) - thick / 2 - 16)})`);
+        .attr('transform', `translate(${hx},${Math.max(13, cy(hx) - thick / 2 - 22)})`);
       appendIcon(sun, 'sun', 24);
       sun.append('text').attr('x', right ? -18 : 18).attr('dy', '0.35em').attr('text-anchor', right ? 'end' : 'start')
-        .text(fmtTemp(hot.water_temperature_c));
+        .text(`Heissester Tag: ${fmtTemp(hot.water_temperature_c)}`);
     }
 
     // Hover: Tag und Temperatur, ein Punkt auf dem Fluss
