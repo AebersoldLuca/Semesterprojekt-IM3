@@ -98,8 +98,8 @@ const fmt0 = nf(0).format;
 /** Runden wie die Anzeige (Intl): halbe Werte weg von 0, also −33.5 → −34 */
 const roundShown = (v, digits = 0) => (Math.sign(v) * Math.round(Math.abs(v) * 10 ** digits)) / 10 ** digits;
 const fmtSigned = (v, digits = 0) => (v > 0 ? '+' : v < 0 ? '−' : '±') + nf(digits).format(Math.abs(v));
-const fmtTemp = (v) => `${fmt1(v)} °C`;
-const fmtCm = (v) => `${fmtSigned(v)} cm`;
+const fmtTemp = (v) => `${fmt1(v)}\u00a0°C`; // geschütztes Leerzeichen: «°C» bricht nie allein um
+const fmtCm = (v) => `${fmtSigned(v)}\u00a0cm`;
 const longDate = (iso) => fmtDateLong(parseDate(iso));
 
 const stationInfo = (no) => STATIONS.find((s) => s.no === no);
@@ -125,6 +125,39 @@ function setSlot(name, content) {
   document.querySelectorAll(`[data-slot="${name}"]`).forEach((node) => {
     node.replaceChildren(...[].concat(content).map((c) => (c instanceof Node ? c : document.createTextNode(String(c)))));
   });
+}
+
+/**
+ * Kleine gezeichnete Symbole, als SVG direkt im Code (keine Bilddateien).
+ * Linien in currentColor: Die Farbe kommt aus dem CSS.
+ */
+const ICONS = {
+  thermo: ['M10 13.6V5a2 2 0 1 1 4 0v8.6a4 4 0 1 1-4 0Z', 'M12 9.5v6.5'],
+  sun: ['M12 7.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z', 'M12 2v2.2', 'M12 19.8V22', 'M4.9 4.9l1.6 1.6', 'M17.5 17.5l1.6 1.6',
+    'M2 12h2.2', 'M19.8 12H22', 'M4.9 19.1l1.6-1.6', 'M17.5 6.5l1.6-1.6'],
+  waveDown: ['M2 7.5c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0', 'M12 11v9', 'M8.5 16.5 12 20l3.5-3.5'],
+  pen: ['M4 20l1.2-4.4L16.4 4.4a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.4 18.8Z', 'M14.5 6.5l3 3'],
+};
+
+function icon(name, cls = 'icon') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', cls);
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of ICONS[name]) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+/** Dasselbe Symbol direkt in einer D3-Grafik, zentriert auf 0,0 */
+function appendIcon(selection, name, size) {
+  const g = selection.append('g').attr('class', 'icon-g')
+    .attr('transform', `translate(${-size / 2},${-size / 2}) scale(${size / 24})`);
+  for (const d of ICONS[name]) g.append('path').attr('d', d);
+  return g;
 }
 
 const keySwatch = (no, cls = 'key') => el('span', { class: cls, style: `background:${colorOf(no)}`, 'aria-hidden': 'true' });
@@ -263,10 +296,12 @@ async function init() {
   state.cmpAt = state.cmp;
 
   renderStripes();
+  setupDraw();
   renderStats();
   renderStationGroups();
   renderBands();
   setupTimeline();
+  setupTip();
   renderFacts();
   renderLegend();
   loadTimeseries();
@@ -360,14 +395,172 @@ const mdDate = (md) => new Date(Date.UTC(2000, Number(md.slice(0, 2)) - 1, Numbe
 const fmtMd = d3.utcFormat('%m-%d');
 const delta = (s, k) => s.cur.summary[k] - s.ref.summary[k];
 
+/* ---------- 3b) Mitmachen: die Kurve selbst zeichnen -------------- */
+
+/**
+ * «Schätz mal!»: Die Kurve von 2022 ist zu sehen, von 2026 nur der Januar.
+ * Wer mag, zeichnet mit Maus oder Finger weiter, wie warm der Fluss 2026 war,
+ * und deckt dann die echte Kurve auf. Gezeichnet wird pro Woche ein Punkt.
+ * Die Zahlen darunter kommen wie alles andere aus unload.php.
+ */
+function setupDraw() {
+  const ml = inGroup('mittelland');
+  if (!ml.length) return;
+  // Der Mittellandfluss mit dem grössten Sprung bei den Tagen über 25 °C
+  const s = [...ml].sort((a, b) => delta(b, 'days_ge_25') - delta(a, 'days_ge_25'))[0];
+  const start = new Date(Date.UTC(2000, 1, 1));
+  const cutoff = mdDate(state.cmp.cutoff);
+  const slots = d3.utcDay.range(start, cutoff, 7);
+  if (+slots[slots.length - 1] !== +cutoff) slots.push(cutoff);
+
+  state.draw = { s, start, slots, guess: slots.map(() => null), revealed: false, last: null };
+  setSlot('draw-river', state.names.get(s.no).river_name);
+
+  const reveal = document.getElementById('draw-reveal');
+  const skip = document.getElementById('draw-skip');
+  const reset = document.getElementById('draw-reset');
+  reveal.addEventListener('click', () => revealDraw());
+  skip.addEventListener('click', () => revealDraw());
+  reset.addEventListener('click', () => {
+    state.draw.guess = slots.map(() => null);
+    state.draw.revealed = false;
+    document.getElementById('draw-result').replaceChildren();
+    renderDraw();
+  });
+  renderDraw();
+}
+
+function renderDraw() {
+  const d = state.draw;
+  if (!d) return;
+  const chart = document.getElementById('draw-chart');
+  d3.select(chart).selectAll('svg').remove();
+  const width = chart.clientWidth;
+  const height = chart.clientHeight;
+  const small = width < 560;
+  const m = { top: 16, right: small ? 14 : 24, bottom: 28, left: small ? 30 : 40 };
+  const innerW = width - m.left - m.right;
+  const innerH = height - m.top - m.bottom;
+  if (innerW < 80 || innerH < 80) return;
+
+  const cutoff = d.slots[d.slots.length - 1];
+  const ref = yearPoints(d.s.ref.records, YEARS.ref, 'WT', 7).filter((p) => p.x <= cutoff);
+  const cur = yearPoints(d.s.cur.records, YEARS.cur, 'WT', 7);
+  const top = d3.max([...ref, ...cur], (p) => p.value) ?? 25;
+  const x = d3.scaleUtc().domain([YEAR_START, cutoff]).range([0, innerW]);
+  const y = d3.scaleLinear().domain([0, Math.max(28, Math.ceil(top + 2))]).range([innerH, 0]);
+
+  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+  g.append('rect').attr('class', 'draw__zone').attr('x', x(d.start)).attr('width', innerW - x(d.start)).attr('height', innerH).attr('rx', 10);
+  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(small ? 2 : 1)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')));
+  g.append('g').attr('class', 'axis axis--y')
+    .call(d3.axisLeft(y).ticks(small ? 4 : 6).tickSize(-innerW).tickFormat((v) => `${fmt0(v)}°`))
+    .call((a) => a.selectAll('.tick text').attr('x', -6));
+
+  const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveBasis);
+  g.append('path').attr('class', 'draw__ref').attr('d', line(ref));
+  const refLast = [...ref].reverse().find((p) => p.value != null);
+  if (refLast) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(refLast.x) - 4).attr('y', y(refLast.value) + 18).attr('text-anchor', 'end').text(YEARS.ref);
+
+  // Der Anfang von 2026 ist vorgegeben: bis Ende Januar
+  const known = cur.filter((p) => p.x == null || p.x < d.start);
+  const anchor = [...known].reverse().find((p) => p.value != null);
+  g.append('path').attr('class', 'draw__real').attr('d', line(known));
+
+  const guessPath = g.append('path').attr('class', `draw__guess${d.revealed ? ' is-done' : ''}`);
+  const hint = g.append('g').attr('class', 'draw__hint-g')
+    .attr('transform', `translate(${x(d.start) + 16},${anchor ? y(anchor.value) : innerH / 2})`);
+  appendIcon(hint.append('g').attr('class', 'draw__hint-icon').attr('transform', 'translate(13,-17)'), 'pen', 26);
+  hint.append('text').attr('class', 'draw__hint').attr('x', 32).attr('y', -12).text(small ? 'Hier weiterzeichnen' : 'Zeichne hier weiter, wie warm es 2026 war');
+
+  const update = () => {
+    const pts = [anchor && { x: anchor.x, value: anchor.value }, ...d.slots.map((slot, i) => ({ x: slot, value: d.guess[i] }))].filter(Boolean);
+    guessPath.attr('d', d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveMonotoneX)(pts));
+    const filled = d.guess.filter((v) => v != null).length;
+    hint.style('display', filled || d.revealed ? 'none' : null);
+    document.getElementById('draw-reveal').disabled = d.revealed || filled < d.slots.length * 0.6;
+    document.getElementById('draw-reveal').hidden = d.revealed;
+    document.getElementById('draw-skip').hidden = d.revealed || filled > 0;
+    document.getElementById('draw-reset').hidden = !d.revealed && filled === 0;
+  };
+
+  if (d.revealed) {
+    const rest = cur.filter((p) => p.x == null || p.x >= d3.utcDay.offset(d.start, -7));
+    const real = g.append('path').attr('class', 'draw__real').attr('d', line(rest));
+    const length = real.node().getTotalLength();
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      real.attr('stroke-dasharray', `${length} ${length}`).attr('stroke-dashoffset', length)
+        .transition().duration(1600).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0)
+        .on('end', () => real.attr('stroke-dasharray', null));
+    }
+    const curLast = [...cur].reverse().find((p) => p.value != null);
+    if (curLast) g.append('text').attr('class', 'year-label').attr('x', x(curLast.x) - 4).attr('y', y(curLast.value) - 10).attr('text-anchor', 'end').text(YEARS.cur);
+  } else {
+    // Zeichnen: Maus gedrückt halten oder mit dem Finger über die Fläche fahren
+    const setAt = (event) => {
+      const [mx, my] = d3.pointer(event, g.node());
+      const i = d3.leastIndex(d.slots, (slot) => Math.abs(x(slot) - mx));
+      const value = Math.max(0, Math.min(y.domain()[1], y.invert(my)));
+      // Wer schnell zieht, überspringt Wochen: dazwischen gerade verbinden
+      if (d.last != null && Math.abs(i - d.last.i) > 1) {
+        const [a, b] = d.last.i < i ? [d.last, { i, value }] : [{ i, value }, d.last];
+        for (let k = a.i + 1; k < b.i; k++) d.guess[k] = a.value + ((b.value - a.value) * (k - a.i)) / (b.i - a.i);
+      }
+      d.guess[i] = value;
+      d.last = { i, value };
+      update();
+    };
+    g.append('rect').attr('x', x(d.start) - 12).attr('width', innerW - x(d.start) + 12).attr('height', innerH)
+      .attr('fill', 'transparent')
+      .on('pointerdown', (event) => { event.target.setPointerCapture(event.pointerId); d.last = null; setAt(event); })
+      .on('pointermove', (event) => { if (event.buttons || event.pointerType === 'touch') { if (d.last) setAt(event); } })
+      .on('pointerup pointercancel', () => { d.last = null; });
+  }
+  update();
+}
+
+/** Echte Kurve zeigen und sagen, wie gut geschätzt wurde */
+function revealDraw() {
+  const d = state.draw;
+  d.revealed = true;
+  renderDraw();
+
+  const cur = yearPoints(d.s.cur.records, YEARS.cur, 'WT', 7).filter((p) => p.value != null);
+  const actual = (slot) => d3.least(cur, (p) => Math.abs(p.x - slot));
+  const errors = d.slots.map((slot, i) => (d.guess[i] == null ? null : Math.abs(d.guess[i] - actual(slot).value))).filter((v) => v != null);
+  const river = state.names.get(d.s.no).river_name;
+  const dT = delta(d.s, 'wt_mean');
+  const facts = [
+    `Die ${river} war ${YEARS.cur} bis ${cutoffLabel()} im Schnitt `,
+    el('strong', {}, `${fmt1(Math.abs(dT))}\u00a0°C ${dT >= 0 ? 'wärmer' : 'kühler'}`),
+    ` als ${YEARS.ref} und an `, el('strong', {}, `${fmt0(d.s.cur.summary.days_ge_25)}\u00a0Tagen`),
+    ` über 25\u00a0°C warm (${YEARS.ref}: ${fmt0(d.s.ref.summary.days_ge_25)}\u00a0Tage).`,
+  ];
+  let praise = [];
+  if (errors.length) {
+    const mean = d3.mean(errors);
+    const word = mean < 1 ? 'Stark geschätzt!' : mean < 2 ? 'Gar nicht schlecht.' : `Die ${river} hat dich überrascht.`;
+    praise = [`${word} Du lagst im Schnitt `, el('strong', {}, `${fmt1(mean)}\u00a0°C`), ' daneben. '];
+  }
+  document.getElementById('draw-result').replaceChildren(...praise, ...facts);
+}
+
 /* ---------- 4) Einstieg: Temperatur-Streifen --------------------- */
 
 /** Kalendertag «MM-DD» → Position im neutralen Schaltjahr 2000 (0 … 365) */
 const dayIndex = (md) => d3.utcDay.count(new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, Number(md.slice(0, 2)) - 1, Number(md.slice(3, 5)))));
 
+/** Ein kleiner gezeichneter Fisch, schwimmt nach rechts (Mitte bei 0,0) */
+const FISH_PATH = 'M-9 0c3-4.5 9-5 13-1.2L8-4v8L4 1.2C0 5-6 4.5-9 0Z';
+
 /**
- * Jeder Streifen = ein Tag, Farbe = Wassertemperatur (kalt blau → warm rot).
- * Oben 2022, unten 2026 – alles echte Tagesmittel aus der Datenbank.
+ * Einstieg: Die Thur fliesst zweimal durchs Bild, oben 2022, unten 2026.
+ * Die Farbe des Flusses ist die Wassertemperatur, Tag für Tag (dieselbe
+ * Skala wie bei den Flussbändern). Eine Sonne markiert den heissesten Tag,
+ * ein paar Fische schwimmen mit. Darunter stehen die wichtigsten Zahlen.
+ * Verglichen wird wie überall vom 1. Januar bis zum Stichtag.
  */
 function renderStripes() {
   const s = state.cmp.stations.find((c) => c.no === HERO_STATION) || state.cmp.stations[0];
@@ -375,47 +568,116 @@ function renderStripes() {
   const rowsBox = document.getElementById('stripes-rows');
   if (!s) { rowsBox.replaceChildren(); return; }
 
-  const all = [...s.ref.records, ...s.cur.records].map((r) => r.water_temperature_c).filter((v) => v != null);
-  const [lo, hi] = d3.extent(all);
-  // Divergierende Skala mit neutraler Mitte: kalt ↔ warm
-  const color = d3.scaleLinear().domain([lo, (lo + hi) / 2, hi]).range(['#1f5fb4', '#e9e5da', '#d6453d']).interpolate(d3.interpolateLab);
-  setSlot('ramp-min', `${fmt0(lo)} °C`);
-  setSlot('ramp-max', `${fmt0(hi)} °C`);
   const names = state.names.get(s.no);
+  const cutoff = state.cmp.cutoff;
+  setSlot('ramp-min', '0 °C');
+  setSlot('ramp-max', '24 °C');
   document.getElementById('stripes-caption').textContent =
-    `Wassertemperatur der ${names.river_name} in ${names.station_name}. Ein Streifen pro Tag, ${YEARS.cur} bis ${cutoffLabel()}.`;
+    `Wassertemperatur der ${names.river_name} in ${names.station_name}, Tag für Tag. Oben ${YEARS.ref}, unten ${YEARS.cur} bis ${cutoffLabel()}.`;
 
+  const width = rowsBox.clientWidth;
+  if (width < 100) return; // noch nicht sichtbar
+  const small = width < 560;
+  const height = small ? 84 : 112;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const x = d3.scaleLinear().domain([0, 366]).range([0, width]);
   const tooltip = getTooltip(figure);
-  const rows = [[YEARS.ref, s.ref.records], [YEARS.cur, s.cur.records]].map(([year, recs]) => {
-    const svg = d3.create('svg').attr('class', 'stripes__svg').attr('viewBox', '0 0 366 1')
-      .attr('preserveAspectRatio', 'none').attr('role', 'img')
-      .attr('aria-label', `Wassertemperatur ${year}, ${names.river_name}: ${recs.length} Tage`);
-    svg.selectAll('rect').data(recs.filter((r) => r.water_temperature_c != null)).join('rect')
-      // In Nicht-Schaltjahren fehlt der 29. Februar – der 28. deckt ihn mit ab, damit keine Lücke entsteht
-      .attr('x', (r) => dayIndex(r.date.slice(5))).attr('y', 0).attr('height', 1)
-      .attr('width', (r) => (r.date.endsWith('-02-28') && year % 4 !== 0 ? 2.05 : 1.05))
-      .attr('fill', (r) => color(r.water_temperature_c));
 
-    // Hover: Tag und Temperatur anzeigen
-    const byDay = new Map(recs.map((r) => [dayIndex(r.date.slice(5)), r]));
+  const rows = [[YEARS.ref, s.ref.records, 0], [YEARS.cur, s.cur.records, Math.PI]].map(([year, records, phase]) => {
+    const days = records.filter((r) => r.water_temperature_c != null);
+    const thick = height * 0.34;
+    const mid = height * 0.62;
+    // Der Fluss schlängelt sich in zweieinhalb Bögen durchs Bild
+    const cy = (px) => mid + height * 0.1 * Math.sin((px / width) * Math.PI * 5 + phase);
+    const end = x(d3.max(days, (r) => dayIndex(r.date.slice(5))) + 1);
+    const xs = [...d3.range(0, end, 4), end];
+    const id = `hero-${year}`;
+
+    const svg = d3.create('svg').attr('class', 'stripes__svg').attr('width', width).attr('height', height)
+      .attr('role', 'img').attr('aria-label', `Wassertemperatur ${year}, ${names.river_name}: ${days.length} Tage`);
+    const defs = svg.append('defs');
+    defs.append('linearGradient').attr('id', `${id}-color`).attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', 0).attr('x2', width).attr('y1', 0).attr('y2', 0)
+      .selectAll('stop').data(days).join('stop')
+      .attr('offset', (r) => (dayIndex(r.date.slice(5)) + 0.5) / 366)
+      .attr('stop-color', (r) => tempColor(r.water_temperature_c));
+
+    const river = d3.area().x((p) => p).y0((p) => cy(p) - thick / 2).y1((p) => cy(p) + thick / 2).curve(d3.curveBasis);
+    svg.append('path').attr('class', 'hero-river').attr('d', river(xs)).attr('fill', `url(#${id}-color)`);
+    // Glanz auf dem Wasser
+    svg.append('path').attr('class', 'hero-river__shine')
+      .attr('d', d3.line().x((p) => p).y((p) => cy(p) - thick * 0.2).curve(d3.curveBasis)(xs.filter((p) => p < end - 12)));
+
+    // Fische schwimmen der Mitte des Flusses entlang
+    if (!reduceMotion) {
+      defs.append('path').attr('id', `${id}-path`).attr('d', d3.line().x((p) => p).y(cy).curve(d3.curveBasis)(xs));
+      const duration = small ? 16 : 26;
+      [0, 0.36, 0.71].forEach((offset, k) => {
+        svg.append('path').attr('class', 'hero-fish').attr('d', FISH_PATH).attr('transform', `scale(${k === 1 ? 0.8 : 1})`)
+          .append('animateMotion').attr('dur', `${duration}s`).attr('repeatCount', 'indefinite').attr('rotate', 'auto')
+          .attr('begin', `-${(offset * duration).toFixed(1)}s`)
+          .append('mpath').attr('href', `#${id}-path`);
+      });
+    }
+
+    // Sonne über dem heissesten Tag bis zum Stichtag
+    const hot = hottestDay(days.filter((r) => r.date.slice(5) <= cutoff));
+    if (hot) {
+      const hx = x(dayIndex(hot.date.slice(5)) + 0.5);
+      const right = hx > width - 110;
+      const sun = svg.append('g').attr('class', 'hero-sun')
+        .attr('transform', `translate(${hx},${Math.max(12, cy(hx) - thick / 2 - 16)})`);
+      appendIcon(sun, 'sun', 24);
+      sun.append('text').attr('x', right ? -18 : 18).attr('dy', '0.35em').attr('text-anchor', right ? 'end' : 'start')
+        .text(fmtTemp(hot.water_temperature_c));
+    }
+
+    // Hover: Tag und Temperatur, ein Punkt auf dem Fluss
+    const dot = svg.append('circle').attr('class', 'hero-dot').attr('r', 5).style('display', 'none');
+    const byDay = new Map(days.map((r) => [dayIndex(r.date.slice(5)), r]));
     svg.on('pointermove', (event) => {
+      const [mx] = d3.pointer(event);
+      const r = byDay.get(Math.floor(x.invert(mx)));
+      if (!r) { tooltip.hide(); dot.style('display', 'none'); return; }
+      const px = x(dayIndex(r.date.slice(5)) + 0.5);
+      dot.style('display', null).attr('cx', px).attr('cy', cy(px));
       const box = event.currentTarget.getBoundingClientRect();
-      const r = byDay.get(Math.floor(((event.clientX - box.left) / box.width) * 366));
-      if (!r || r.water_temperature_c == null) { tooltip.hide(); return; }
       const fb = figure.getBoundingClientRect();
       tooltip.show(el('div', {},
         el('div', { class: 'tooltip__date' }, fmtDateTooltip(parseDate(r.date))),
         el('div', {}, `${r.river_name}: `, el('strong', {}, fmtTemp(r.water_temperature_c)))),
-      event.clientX - fb.left, box.top - fb.top - 30);
-    }).on('pointerleave', () => tooltip.hide());
+      px + box.left - fb.left, box.top - fb.top + cy(px) - 40);
+    }).on('pointerleave', () => { tooltip.hide(); dot.style('display', 'none'); });
 
     return el('div', { class: `stripes__row${year === YEARS.cur ? ' stripes__row--cur' : ''}` },
       el('span', { class: 'stripes__year' }, String(year)), svg.node());
   });
   rowsBox.replaceChildren(...rows);
+  renderHeroFacts(s);
 
-  // Aufbau-Animation starten, sobald die Streifen im DOM sind
+  // Aufbau-Animation starten, sobald die Flüsse im DOM sind
   requestAnimationFrame(() => requestAnimationFrame(() => figure.classList.add('is-drawn')));
+}
+
+/** Die Zahlen unter den Flüssen: heissester Tag und Tage über 20 °C, bis zum Stichtag */
+function renderHeroFacts(s) {
+  const box = document.getElementById('stripes-facts');
+  const cutoff = state.cmp.cutoff;
+  const card = (year, records, summary, extra) => {
+    const hot = hottestDay(records.filter((r) => r.date.slice(5) <= cutoff));
+    return el('div', { class: 'hero-fact' },
+      el('span', { class: 'hero-fact__year' }, String(year)),
+      hot ? el('span', { class: 'hero-fact__item' }, icon('thermo'), 'Heissester Tag ',
+        el('strong', {}, fmtTemp(hot.water_temperature_c)), el('small', {}, fmtDayMonth(parseDate(hot.date)))) : null,
+      el('span', { class: 'hero-fact__item' }, icon('sun'), el('strong', {}, `${fmt0(summary.days_ge_20)} Tage`), 'über 20 °C'),
+      extra);
+  };
+  const more = s.cur.summary.days_ge_20 - s.ref.summary.days_ge_20;
+  box.replaceChildren(
+    card(YEARS.ref, s.ref.records, s.ref.summary, null),
+    card(YEARS.cur, s.cur.records, s.cur.summary, more !== 0
+      ? el('span', { class: 'hero-fact__more' }, `${more > 0 ? '+' : '−'}${fmt0(Math.abs(more))} Tage ${more > 0 ? 'mehr' : 'weniger'} als ${YEARS.ref}`)
+      : null));
 }
 
 /* ---------- 5) Auf einen Blick: Kennzahlen ----------------------- */
@@ -439,20 +701,21 @@ function renderStats() {
   const warmest = pick((s) => delta(s, 'wt_mean'));
   const lowest = pick((s) => -delta(s, 'w_mean'));
 
-  const tile = (s, number, unit, label, ref) => el('article', { class: 'stat focusable', 'data-station': s.no, 'data-pin': '' },
+  const tile = (s, symbol, number, unit, label, ref) => el('article', { class: 'stat focusable', 'data-station': s.no, 'data-pin': '' },
+    icon(symbol, 'icon stat__icon'),
     el('div', { class: 'stat__river' }, keySwatch(s.no), displayName(s.no)),
     el('span', { class: 'stat__value' }, number, el('small', {}, unit)),
     el('p', { class: 'stat__label' }, label),
     el('p', { class: 'stat__ref' }, ref));
 
   box.replaceChildren(
-    tile(hot, fmt0(hot.cur.summary.days_ge_25), 'Tage',
+    tile(hot, 'sun', fmt0(hot.cur.summary.days_ge_25), 'Tage',
       'mit einem Tagesmittel von 25 °C oder mehr',
       `${YEARS.ref} im selben Zeitraum: ${fmt0(hot.ref.summary.days_ge_25)} Tage`),
-    tile(warmest, fmtSigned(delta(warmest, 'wt_mean'), 1), '°C',
+    tile(warmest, 'thermo', fmtSigned(delta(warmest, 'wt_mean'), 1), '°C',
       `wärmer als ${YEARS.ref}, im Mittel über alle Tage`,
       `${fmtTemp(warmest.ref.summary.wt_mean)} → ${fmtTemp(warmest.cur.summary.wt_mean)}`),
-    tile(lowest, fmtSigned(delta(lowest, 'w_mean')), 'cm',
+    tile(lowest, 'waveDown', fmtSigned(delta(lowest, 'w_mean')), 'cm',
       `tieferer Wasserstand als ${YEARS.ref}, im Mittel`,
       `${fmtCm(lowest.ref.summary.w_mean)} → ${fmtCm(lowest.cur.summary.w_mean)} ggü. mittlerem Pegel`),
   );
@@ -626,11 +889,14 @@ function renderBands() {
       const chart = el('div', { class: 'chart band__chart', tabindex: '0',
         'aria-label': `${displayName(s.no)}: Wassertemperatur und Wasserstand ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` });
       charts.push({ s, chart });
+      const hottest = hottestDay(s.cur.records);
       return el('div', { class: 'band focusable', 'data-station': s.no },
         el('div', { class: 'band__head' }, name,
           el('span', { class: 'band__delta' },
-            `${YEARS.cur}: ${fmtSigned(delta(s, 'wt_mean'), 1)} °C · ${fmtCm(delta(s, 'w_mean'))}`),
+            `${YEARS.cur} im Schnitt ${fmtSigned(delta(s, 'wt_mean'), 1)} °C und ${fmtCm(delta(s, 'w_mean'))}`),
           detail),
+        hottest ? el('p', { class: 'band__hot' }, icon('thermo'), `Heissester Tag ${YEARS.cur}: `,
+          el('strong', {}, fmtTemp(hottest.water_temperature_c)), ` am ${fmtDayMonth(parseDate(hottest.date))}`) : null,
         chart);
     }))));
 
@@ -638,6 +904,9 @@ function renderBands() {
   for (const band of state.bands) band.setCut(state.cmpAt.cutoff);
   applyFocus();
 }
+
+/** Der Tag mit dem höchsten Tagesmittel der Wassertemperatur */
+const hottestDay = (records) => d3.greatest(records.filter((r) => r.water_temperature_c != null), (r) => r.water_temperature_c);
 
 /**
  * Ein Fluss, zwei Bänder: oben 2022, unten 2026, auf derselben Zeitachse.
@@ -682,7 +951,7 @@ function drawBand(chart, s, smooth) {
 
   for (const y of years) {
     const id = `band-${++clipId}`;
-    const area = d3.area().defined((d) => d.w != null).curve(d3.curveMonotoneX)
+    const area = d3.area().defined((d) => d.w != null).curve(d3.curveBasis)
       .x((d) => x(d.x)).y0((d) => y.mid - thick(d.w) / 2).y1((d) => y.mid + thick(d.w) / 2);
 
     // Farbverlauf mit einem Halt pro Tag – jede Farbe ist ein echter Tageswert
@@ -698,12 +967,20 @@ function drawBand(chart, s, smooth) {
     // Strömung: zwei feine Linien im Band, die langsam nach rechts wandern
     const flow = g.append('g').attr('class', 'band__flow').attr('clip-path', `url(#${id}-clip)`);
     for (const k of [-0.22, 0.22]) {
-      flow.append('path').attr('d', d3.line().defined((d) => d.w != null).curve(d3.curveMonotoneX)
+      flow.append('path').attr('d', d3.line().defined((d) => d.w != null).curve(d3.curveBasis)
         .x((d) => x(d.x)).y((d) => y.mid + k * thick(d.w))(y.days));
     }
 
     g.append('text').attr('class', 'band__year').attr('x', -8).attr('y', y.mid).attr('dy', '0.35em')
       .attr('text-anchor', 'end').text(y.year);
+
+    // Punkt auf dem heissesten Tag des Jahres
+    const hot = hottestDay(y.year === YEARS.cur ? s.cur.records : s.ref.records);
+    const hotDay = hot && y.days.find((d) => d.md === hot.date.slice(5));
+    if (y.year === YEARS.cur && hotDay?.w != null) {
+      g.append('circle').attr('class', 'band__marker').attr('r', small ? 4 : 5)
+        .attr('cx', x(hotDay.x)).attr('cy', y.mid);
+    }
   }
 
   // Stichtag
@@ -958,6 +1235,27 @@ function renderZoom() {
 
 /* ---------- 8) Urteil -------------------------------------------- */
 
+// Entschieden wird mit den angezeigten Werten: «+0.0 °C» gilt nicht als wärmer
+const isWarmer = (s) => roundShown(delta(s, 'wt_mean'), 1) > 0;
+const isLower = (s) => roundShown(delta(s, 'w_mean')) < 0;
+
+/** Ja, Teilweise oder Nein – mit dem Satz, der es begründet */
+function verdictOf(cmp) {
+  const ml = inGroup('mittelland', cmp);
+  const cutoff = cutoffLabel(cmp);
+  const both = ml.filter((s) => isWarmer(s) && isLower(s)).length;
+  if (both === ml.length) {
+    return { word: 'Ja', cls: 'is-yes',
+      lead: `Limmat, Thur und Rhein waren ${YEARS.cur} bis ${cutoff} im Mittel wärmer und lagen tiefer als im Hitzesommer ${YEARS.ref}.` };
+  }
+  if (ml.some((s) => isWarmer(s) || isLower(s))) {
+    return { word: 'Teilweise', cls: 'is-partial',
+      lead: `${both} von ${ml.length} Mittelland-Flüssen waren ${YEARS.cur} wärmer und tiefer als ${YEARS.ref}.` };
+  }
+  return { word: 'Nein', cls: 'is-no',
+    lead: `Keiner der Mittelland-Flüsse war ${YEARS.cur} bis ${cutoff} wärmer und tiefer als ${YEARS.ref}.` };
+}
+
 /** Urteil zum Stichtag des Reglers (ohne Regler: bis zum letzten Messtag) */
 function renderVerdict(cmp = state.cmpAt) {
   const box = document.getElementById('verdict');
@@ -965,22 +1263,9 @@ function renderVerdict(cmp = state.cmpAt) {
   const al = inGroup('alpen', cmp);
   if (!ml.length) { box.replaceChildren(el('p', { class: 'muted' }, 'Keine Vergleichsdaten.')); return; }
   const cutoff = cutoffLabel(cmp);
-  // Entschieden wird mit den angezeigten Werten: «+0.0 °C» gilt nicht als wärmer
-  const warm = (s) => roundShown(delta(s, 'wt_mean'), 1) > 0;
-  const low = (s) => roundShown(delta(s, 'w_mean')) < 0;
-  const both = ml.filter((s) => warm(s) && low(s)).length;
-
-  let word; let cls; let lead;
-  if (both === ml.length) {
-    word = 'Ja'; cls = 'is-yes';
-    lead = `Limmat, Thur und Rhein waren ${YEARS.cur} bis ${cutoff} im Mittel wärmer und lagen tiefer als im Hitzesommer ${YEARS.ref}.`;
-  } else if (ml.some((s) => warm(s) || low(s))) {
-    word = 'Teilweise'; cls = 'is-partial';
-    lead = `${both} von ${ml.length} Mittelland-Flüssen waren ${YEARS.cur} wärmer und tiefer als ${YEARS.ref}.`;
-  } else {
-    word = 'Nein'; cls = 'is-no';
-    lead = `Keiner der Mittelland-Flüsse war ${YEARS.cur} bis ${cutoff} wärmer und tiefer als ${YEARS.ref}.`;
-  }
+  const warm = isWarmer;
+  const low = isLower;
+  const { word, cls, lead } = verdictOf(cmp);
 
   const pct = (s) => (s.cur.summary.count ? `${fmt0((s.cur.summary.checked / s.cur.summary.count) * 100)} %` : '–');
   // Gefülltes Quadrat = erfüllt, leeres = nicht erfüllt; der Text daneben sagt dasselbe (nie nur Farbe)
@@ -1018,17 +1303,14 @@ function renderVerdict(cmp = state.cmpAt) {
 /**
  * Der Regler schiebt den Stichtag zwischen 1. Februar und dem letzten
  * Messtag 2026. Urteil und Flussbänder rechnen sofort mit: So sieht man,
- * ab wann die These gestimmt hätte. «Jahr abspielen» lässt den Stichtag
- * von selbst durchs Jahr laufen.
+ * ab wann die These gestimmt hätte.
  */
 function setupTimeline() {
   const range = document.getElementById('timeline-range');
   const output = document.getElementById('timeline-output');
-  const play = document.getElementById('timeline-play');
   const first = new Date(Date.UTC(2000, 1, 1)); // vorher sind die Mittelwerte zu kurz
   const last = mdDate(state.cmp.cutoff);
   const maxIndex = Math.max(0, d3.utcDay.count(first, last));
-  let timer = null;
 
   range.min = '0';
   range.max = String(maxIndex);
@@ -1043,27 +1325,34 @@ function setupTimeline() {
     renderVerdict();
     for (const band of state.bands) band.setCut(md);
   };
-  const stop = () => {
-    clearInterval(timer);
-    timer = null;
-    play.setAttribute('aria-pressed', 'false');
-    play.textContent = '▶ Jahr abspielen';
-  };
-
-  range.addEventListener('input', () => { stop(); set(Number(range.value)); });
-  play.addEventListener('click', () => {
-    if (timer) { stop(); return; }
-    let i = Number(range.value) >= maxIndex ? 0 : Number(range.value);
-    play.setAttribute('aria-pressed', 'true');
-    play.textContent = '❚❚ Pause';
-    timer = setInterval(() => {
-      i = Math.min(maxIndex, i + 2);
-      set(i);
-      if (i >= maxIndex) stop();
-    }, 45);
-  });
+  range.addEventListener('input', () => set(Number(range.value)));
 
   set(maxIndex);
+}
+
+/* ----- Zuerst tippen, dann das Urteil ----- */
+
+/**
+ * Bevor das Urteil erscheint, gibt man einen Tipp ab: Ja, Teilweise oder
+ * Nein. Wer nicht tippen mag, kommt über «Ohne Tipp zum Ergebnis» weiter.
+ */
+function setupTip() {
+  const tip = document.getElementById('verdict-tip');
+  const body = document.getElementById('verdict-body');
+  const feedback = document.getElementById('tip-feedback');
+  tip.querySelectorAll('[data-tip]').forEach((button) => button.addEventListener('click', () => {
+    const guess = button.dataset.tip;
+    const { word } = verdictOf(state.cmp);
+    tip.hidden = true;
+    body.hidden = false;
+    if (guess) {
+      const right = guess === word;
+      feedback.className = `tip-feedback${right ? ' is-right' : ''}`;
+      feedback.textContent = right ? `Dein Tipp «${guess}» stimmt!` : `Dein Tipp war «${guess}». Die Daten sagen «${word}».`;
+      feedback.hidden = false;
+    }
+    body.focus();
+  }));
 }
 
 /* ----- Einen Fluss auf der ganzen Seite hervorheben ----- */
@@ -1460,7 +1749,9 @@ function setupResize() {
   const redraw = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
+      renderStripes();
       drawSparklines();
+      renderDraw();
       renderBands();
       renderZoom();
       renderTimeseries();
