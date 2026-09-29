@@ -2,7 +2,8 @@
 # Geheimnisse – NIEMALS committen
 # ---------------------------------------------------------------
 # Echte Zugangsdaten (Vorlage: config.example.php)
-config.php
+*config.php
+secrets.php
 .env
 .env.*
 
