@@ -1,305 +1,354 @@
 <?php
 /**
- * ============================================================
- *  3) L O A D   –   transformierte Daten  →  MySQL
- * ============================================================
+ * Load – das Ergebnis des Transforms in die Datenbank schreiben.
  *
- * Diese Datei ist der Einstiegspunkt für den Cronjob. Sie führt den ganzen
- * ETL-Prozess aus:
+ * Diese Datei startet die ganze Kette. Der Cronjob ruft sie einmal am Tag auf:
  *
- *   BAFU-API → extract.php → transform.php → load.php → MySQL
+ *   load.php -> include transform.php -> include extract.php -> BAFU-API
  *
  * Aufruf:
- *   php etl/load.php              inkrementell (Standard, täglich per Cronjob)
- *   php etl/load.php --full       alles ab IMPORT_START_DATE neu laden
- *   php etl/load.php --from=2025-01-01
- *   https://…/etl/load.php?token=…   nur falls in config.php ein etl_token gesetzt ist
  *
- * Inkrementell heisst: Es werden nur die Tage ab dem jüngsten gespeicherten
- * Wert geladen – plus REVISION_DAYS davor, damit nachträgliche Korrekturen und
- * Validierungen des BAFU übernommen werden. Ist die Datenbank leer, wird
- * automatisch alles ab IMPORT_START_DATE geladen.
+ *   https://eure-domain.ch/etl/load.php?token=…          tägliches Update
+ *   https://eure-domain.ch/etl/load.php?token=…&full=1   alles ab 2020 neu laden
  *
- * Duplikate: Der UNIQUE-Key (station_id, parameter_code, measured_at) lässt
- * pro Messung nur eine Zeile zu. «INSERT … ON DUPLICATE KEY UPDATE» fügt neue
- * Werte ein und ändert bestehende nur, wenn sich Wert oder Freigabestatus
- * geändert haben. MySQL meldet pro Zeile: 1 = eingefügt, 2 = geändert, 0 = gleich.
+ * Datenfluss dieser Datei:
  *
- * Exit-Codes: 0 = Erfolg, 1 = teilweise erfolgreich, 2 = fehlgeschlagen
+ *   jüngster Messtag in der Datenbank     (SELECT)
+ *     -> Startdatum für extract.php       (60 Tage davor)
+ *       -> 6 Zeilen in stations           (suchen, sonst anlegen)
+ *         -> n Zeilen in observations     (neu, geändert oder gleich)
+ *           -> 1 Zeile in import_runs     (Protokoll für die Website)
+ *
+ * Anders als Extract und Transform gibt diese Datei nichts zurück. Ihr
+ * Ergebnis steht nach dem Aufruf in der Datenbank und bleibt dort.
  */
 
-require_once __DIR__ . '/extract.php';   // 1) Extract
-require_once __DIR__ . '/transform.php'; // 2) Transform
+// ---------------------------------------------------------------------------
+// 1. Ausgabe als reiner Text, Zugangsdaten laden
+// ---------------------------------------------------------------------------
+//
+// config.php liegt im Hauptordner, eine Ebene über etl/.
 
-const IMPORT_START_DATE = '2020-01-01'; // erster importierter Tag
-const REVISION_DAYS     = 60;           // so viele Tage werden jeweils neu geladen
+header('Content-Type: text/plain; charset=utf-8');
 
-// ==================================================================
-// Datenbank-Funktionen (CREATE / READ / UPDATE / DELETE)
-// ==================================================================
+require __DIR__ . '/../config.php';
 
-/**
- * Stationen einfügen bzw. aktualisieren.
- * @return array<string,int> station_no → stations.id
- */
-function load_stations(PDO $pdo, array $stations): array
-{
-    $stmt = $pdo->prepare(
-        'INSERT INTO stations
-            (station_no, name, river_name, site_name, catchment_name, latitude, longitude,
-             elevation, status, coverage_from, sort_order, is_active)
-         VALUES
-            (:station_no, :name, :river_name, :site_name, :catchment_name, :latitude, :longitude,
-             :elevation, :status, :coverage_from, :sort_order, 1)
-         ON DUPLICATE KEY UPDATE
-            name = VALUES(name), river_name = VALUES(river_name), site_name = VALUES(site_name),
-            catchment_name = VALUES(catchment_name), latitude = VALUES(latitude),
-            longitude = VALUES(longitude), elevation = VALUES(elevation), status = VALUES(status),
-            coverage_from = VALUES(coverage_from), sort_order = VALUES(sort_order), is_active = 1'
-    );
-    foreach ($stations as $row) {
-        $stmt->execute($row);
-    }
+// ---------------------------------------------------------------------------
+// 2. Nur mit Token
+// ---------------------------------------------------------------------------
+//
+// load.php liegt auf dem Webserver und ist per URL erreichbar – sonst könnte
+// der Cronjob sie nicht aufrufen. Damit nicht jede Person im Netz einen Import
+// starten kann, braucht der Aufruf das geheime Token aus config.php.
+//
+// hash_equals() vergleicht wie ===, verrät aber über die Antwortzeit nicht,
+// wie viele Zeichen schon gestimmt haben.
+//
+// Über die Kommandozeile (php etl/load.php) braucht es kein Token.
 
-    // Stationen, die nicht mehr in STATIONS (extract.php) stehen, deaktivieren
-    // (UPDATE statt DELETE: ihre historischen Messwerte bleiben erhalten).
-    $nos = array_map('strval', array_keys($stations));
-    $in  = implode(',', array_fill(0, count($nos), '?'));
-    $pdo->prepare("UPDATE stations SET is_active = 0 WHERE station_no NOT IN ($in)")->execute($nos);
-
-    $sel = $pdo->prepare("SELECT station_no, id FROM stations WHERE station_no IN ($in)");
-    $sel->execute($nos);
-    return array_map('intval', $sel->fetchAll(PDO::FETCH_KEY_PAIR));
-}
-
-/**
- * Messwerte per Upsert speichern – eine Transaktion für alle Zeilen.
- * @return array{inserted:int, updated:int, unchanged:int}
- */
-function load_observations(PDO $pdo, array $rows, array $stationIds, int $importRunId): array
-{
-    // Reihenfolge im UPDATE-Teil ist wichtig: updated_at/import_run_id werden
-    // ZUERST gesetzt, solange value/release_state noch die alten Werte haben.
-    $stmt = $pdo->prepare(
-        'INSERT INTO observations
-            (station_id, parameter_code, measured_at, obs_date, value, release_state, import_run_id)
-         VALUES
-            (:station_id, :parameter_code, :measured_at, :obs_date, :value, :release_state, :import_run_id)
-         ON DUPLICATE KEY UPDATE
-            updated_at    = IF(value <=> VALUES(value) AND release_state <=> VALUES(release_state),
-                               updated_at, CURRENT_TIMESTAMP),
-            import_run_id = IF(value <=> VALUES(value) AND release_state <=> VALUES(release_state),
-                               import_run_id, VALUES(import_run_id)),
-            value         = VALUES(value),
-            release_state = VALUES(release_state)'
-    );
-
-    $stats = ['inserted' => 0, 'updated' => 0, 'unchanged' => 0];
-    $pdo->beginTransaction();
-    try {
-        foreach ($rows as $row) {
-            $stmt->execute([
-                'station_id'     => $stationIds[$row['station_no']],
-                'parameter_code' => $row['parameter_code'],
-                'measured_at'    => $row['measured_at'],
-                'obs_date'       => $row['obs_date'],
-                'value'          => $row['value'],
-                'release_state'  => $row['release_state'],
-                'import_run_id'  => $importRunId,
-            ]);
-            match ($stmt->rowCount()) {
-                1       => $stats['inserted']++,
-                2       => $stats['updated']++,
-                default => $stats['unchanged']++,
-            };
-        }
-        $pdo->commit();
-    } catch (Throwable $e) {
-        $pdo->rollBack(); // alles oder nichts
-        throw $e;
-    }
-    return $stats;
-}
-
-/** Import-Lauf beginnen (Protokoll). */
-function start_import_run(PDO $pdo, string $mode): int
-{
-    $pdo->prepare(
-        "INSERT INTO import_runs (started_at, status, mode, aggregation) VALUES (UTC_TIMESTAMP(), 'running', ?, ?)"
-    )->execute([$mode, BAFU_AGGREGATION]);
-    return (int) $pdo->lastInsertId();
-}
-
-/** Import-Lauf abschliessen. */
-function finish_import_run(PDO $pdo, int $id, string $status, array $s, ?string $message): void
-{
-    $pdo->prepare(
-        'UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = ?, window_from = ?, window_to = ?,
-            api_requests = ?, rows_received = ?, rows_inserted = ?, rows_updated = ?,
-            rows_unchanged = ?, rows_rejected = ?, message = ?
-         WHERE id = ?'
-    )->execute([
-        $status, $s['window_from'], $s['window_to'], $s['api_requests'], $s['received'],
-        $s['inserted'], $s['updated'], $s['unchanged'], $s['rejected'], $message, $id,
-    ]);
-}
-
-/** Protokolleinträge älter als ein Jahr löschen – Messwerte bleiben unberührt. */
-function prune_import_runs(PDO $pdo, int $keepDays = 365): void
-{
-    $pdo->prepare('DELETE FROM import_runs WHERE started_at < UTC_TIMESTAMP() - INTERVAL ? DAY')->execute([$keepDays]);
-}
-
-/** Ab welchem Tag muss geladen werden? (READ) */
-function import_start(PDO $pdo, string $mode, ?string $fromOption, int $expectedSeries): DateTimeImmutable
-{
-    $zone  = new DateTimeZone(DAY_TIMEZONE);
-    $start = new DateTimeImmutable(IMPORT_START_DATE, $zone);
-
-    if ($mode === 'full') {
-        return $start;
-    }
-    if ($mode === 'from') {
-        return max($start, new DateTimeImmutable($fromOption, $zone));
-    }
-
-    // Inkrementell: jüngster Tag pro aktiver Station & Messgrösse. Fehlt eine
-    // Kombination (z.B. neue Station), wird ab IMPORT_START_DATE geladen.
-    $latest = $pdo->query(
-        'SELECT MAX(o.obs_date) AS last_date
-         FROM observations o JOIN stations s ON s.id = o.station_id
-         WHERE s.is_active = 1
-         GROUP BY o.station_id, o.parameter_code'
-    )->fetchAll(PDO::FETCH_COLUMN);
-
-    if (count($latest) < $expectedSeries) {
-        return $start;
-    }
-    $oldest = new DateTimeImmutable(min($latest), $zone);
-    return max($start, $oldest->modify('-' . REVISION_DAYS . ' days'));
-}
-
-// ==================================================================
-// ETL-Ablauf
-// ==================================================================
-
-// Aufruf nur per Kommandozeile – oder per URL mit gültigem Token
 if (PHP_SAPI !== 'cli') {
-    $token = app_config()['etl_token'];
-    if ($token === '' || !hash_equals($token, (string) ($_GET['token'] ?? ''))) {
+    $token = (string) ($_GET['token'] ?? '');
+
+    if ($etlToken === '' || !hash_equals($etlToken, $token)) {
         http_response_code(403);
-        exit('Forbidden');
+        exit("Kein Zugriff.\n");
     }
-    header('Content-Type: text/plain; charset=utf-8');
+
+    // Der erste Import (alles ab 2020) dauert länger als die üblichen 30 s.
     set_time_limit(300);
 }
 
-$say = function (string $line): void {
-    echo $line, PHP_EOL;
-    if (PHP_SAPI !== 'cli') {
-        @ob_flush();
-        flush();
-    }
-};
+$fullImport = isset($_GET['full']) || in_array('--full', $argv ?? [], true);
 
-// Gleichzeitige Läufe verhindern (z.B. wenn ein Cronjob hängt)
-$lock = fopen(__DIR__ . '/data/load.lock', 'c');
-if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-    $say('Ein anderer Import läuft bereits.');
-    exit(1);
-}
-
-$options = PHP_SAPI === 'cli' ? getopt('', ['full', 'from:']) : [];
-$mode    = isset($options['full']) ? 'full' : (isset($options['from']) ? 'from' : 'incremental');
-$stats   = ['api_requests' => 0, 'received' => 0, 'inserted' => 0, 'updated' => 0,
-            'unchanged' => 0, 'rejected' => 0, 'window_from' => null, 'window_to' => null];
-
-$say('BAFU-Import gestartet (' . gmdate('Y-m-d H:i:s') . " UTC, Modus: $mode)");
+// ---------------------------------------------------------------------------
+// 3. Verbindung aufbauen
+// ---------------------------------------------------------------------------
+//
+// Wortgleich wie in unload.php.
 
 try {
-    $pdo   = db();
-    $runId = start_import_run($pdo, $mode);
-} catch (Throwable $e) {
-    log_message('error', 'Datenbank nicht erreichbar: ' . $e->getMessage(), 'etl');
-    $say('FEHLER: Datenbank nicht erreichbar – ' . $e->getMessage());
-    exit(2);
+    $pdo = new PDO($dsn, $username, $password, $options);
+    echo "Verbindung steht.\n\n";
+} catch (PDOException $e) {
+    exit('Verbindung fehlgeschlagen: ' . $e->getMessage() . "\n");
 }
+
+// ---------------------------------------------------------------------------
+// 4. Ab welchem Tag laden?
+// ---------------------------------------------------------------------------
+//
+// Wir sammeln täglich dazu. Alles ab 2020 jeden Tag neu zu holen, wäre
+// unnötig: Es genügt, ab dem jüngsten gespeicherten Tag zu laden.
+//
+// Plus 60 Tage davor. Das BAFU prüft seine Werte nachträglich und ändert dabei
+// manchmal den Wert oder den Freigabestatus. So kommen diese Korrekturen auch
+// bei uns an.
+//
+// Ist die Datenbank leer, oder fehlt einer Station eine Messgrösse, laden wir
+// alles ab 2020.
+
+$firstDay = '2020-01-01';
+$revisionDays = 60;
+
+$latestDays = $pdo->query(
+    'SELECT MAX(o.obs_date)
+     FROM observations AS o
+     JOIN stations AS s ON s.id = o.station_id
+     WHERE s.is_active = 1
+     GROUP BY o.station_id, o.parameter_code'
+)->fetchAll(PDO::FETCH_COLUMN);
+
+// 6 Stationen × 2 Messgrössen = 12 Reihen
+if ($fullImport || count($latestDays) < 12) {
+    $startDate = $firstDay;
+} else {
+    $startDate = date('Y-m-d', strtotime(min($latestDays) . " -{$revisionDays} days"));
+    $startDate = max($firstDay, $startDate);
+}
+
+echo "Lade ab {$startDate}.\n";
+
+// ---------------------------------------------------------------------------
+// 5. Protokoll-Zeile anlegen
+// ---------------------------------------------------------------------------
+//
+// Jeder Lauf bekommt eine Zeile in import_runs. Die Website liest daraus nicht,
+// aber so lässt sich später nachvollziehen, wann was geladen wurde – auch wenn
+// ein Lauf fehlschlägt.
+
+$pdo->prepare(
+    "INSERT INTO import_runs (started_at, status, mode, aggregation, window_from, window_to)
+     VALUES (UTC_TIMESTAMP(), 'running', :mode, 'data_1day_mean', :window_from, CURDATE())"
+)->execute([
+    'mode' => $fullImport ? 'full' : 'incremental',
+    'window_from' => $startDate,
+]);
+
+$runId = (int) $pdo->lastInsertId();
+
+// ---------------------------------------------------------------------------
+// 6. Das Ergebnis des Transforms holen
+// ---------------------------------------------------------------------------
+//
+// transform.php holt sich die Rohdaten selbst aus extract.php. extract.php
+// sieht dabei die Variable $startDate von oben.
+//
+// Ist die BAFU-API nicht erreichbar, bricht der Extract ab. Die Daten in der
+// Datenbank bleiben dann unverändert, und die Website läuft weiter.
 
 try {
-    $selection = selected_stations();
-    $zone      = new DateTimeZone(DAY_TIMEZONE);
-    $utc       = new DateTimeZone('UTC');
-
-    // --- Zeitraum bestimmen (nicht blind alles laden) ----------------------
-    $from = import_start($pdo, $mode, $options['from'] ?? null, count($selection) * count(BAFU_PARAMETERS));
-    $to   = new DateTimeImmutable('tomorrow', $zone); // bis und mit heute (exklusiv morgen 00:00)
-    $stats['window_from'] = $from->format('Y-m-d');
-    $stats['window_to']   = $to->modify('-1 day')->format('Y-m-d');
-    $say("Zeitraum: {$stats['window_from']} bis {$stats['window_to']} (" . BAFU_AGGREGATION . ')');
-
-    // --- 1) EXTRACT ---------------------------------------------------------
-    $say('');
-    $say('1) Extract: BAFU-API abfragen');
-    $extract = run_extract($selection, $from->setTimezone($utc), $to->setTimezone($utc), $say);
-    $stats['api_requests'] = $extract['api_requests'];
-    $stats['received']     = count($extract['rows']);
-    if ($extract['missing_stations']) {
-        // Keine Station erfinden: fehlt eine in der API, wird sie übersprungen
-        log_message('warning', 'Stationen nicht in der API: ' . implode(', ', $extract['missing_stations']), 'etl');
-        $say('   WARNUNG: nicht gefunden: ' . implode(', ', $extract['missing_stations']));
-    }
-    $say(sprintf('   %d Stationen, %d Rohzeilen', count($extract['stations']), count($extract['rows'])));
-
-    // --- 2) TRANSFORM -------------------------------------------------------
-    $say('');
-    $say('2) Transform: prüfen und aufbereiten');
-    $transformed = run_transform($extract, $selection);
-    $stats['rejected'] = array_sum($transformed['rejected']);
-    $say(sprintf('   %d gültige Messwerte, %d verworfen', count($transformed['observations']), $stats['rejected']));
-    foreach ($transformed['rejected'] as $reason => $n) {
-        $say("   - $reason: $n");
-    }
-
-    // --- 3) LOAD ------------------------------------------------------------
-    $say('');
-    $say('3) Load: in MySQL speichern');
-    $stationIds = load_stations($pdo, $transformed['stations']);
-    $loaded     = load_observations($pdo, $transformed['observations'], $stationIds, $runId);
-    $stats      = array_merge($stats, $loaded);
-    prune_import_runs($pdo);
-
-    $status  = $extract['failed_windows'] === 0 ? 'success' : 'partial';
-    $message = $transformed['rejected']
-        ? 'Verworfen: ' . json_encode($transformed['rejected'], JSON_UNESCAPED_UNICODE) : null;
-    if ($extract['failed_windows']) {
-        $message = trim("{$extract['failed_windows']} Zeitfenster fehlgeschlagen. " . $message);
-    }
-    finish_import_run($pdo, $runId, $status, $stats, $message);
+    $result = include __DIR__ . '/transform.php';
 } catch (Throwable $e) {
-    // Z.B. BAFU-API nicht erreichbar: Die bestehenden Daten in der Datenbank
-    // bleiben unangetastet – die Website funktioniert weiter.
-    log_message('error', get_class($e) . ': ' . $e->getMessage(), 'etl');
-    finish_import_run($pdo, $runId, 'failed', $stats, mb_substr($e->getMessage(), 0, 1000));
-    $say('FEHLER: ' . $e->getMessage());
-    $say('Die bereits gespeicherten Daten bleiben unverändert.');
-    exit(2);
+    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
+        ->execute([mb_substr($e->getMessage(), 0, 1000), $runId]);
+
+    exit('Extract/Transform fehlgeschlagen: ' . $e->getMessage() . "\nDie gespeicherten Daten bleiben unverändert.\n");
 }
 
-// --- Zusammenfassung --------------------------------------------------------
-$total = (int) $pdo->query('SELECT COUNT(*) FROM observations')->fetchColumn();
-$say('');
-$say('Zusammenfassung');
-$say('---------------');
-$say("Status:           $status");
-$say("API-Requests:     {$stats['api_requests']}");
-$say("Empfangen:        {$stats['received']}");
-$say("Neu eingefügt:    {$stats['inserted']}");
-$say("Aktualisiert:     {$stats['updated']}");
-$say("Unverändert:      {$stats['unchanged']}");
-$say("Verworfen:        {$stats['rejected']}");
-$say("Messwerte total:  $total");
+$stations = $result['stations'];
+$rows = $result['data'];
+$audit = $result['audit'];
 
-log_message('info', sprintf('Import #%d %s: %d empfangen, %d neu, %d aktualisiert, %d verworfen',
-    $runId, $status, $stats['received'], $stats['inserted'], $stats['updated'], $stats['rejected']), 'etl');
+echo 'Die API liefert ' . $audit['input_rows'] . ' Zeilen in '
+    . $result['extract_audit']['api_requests'] . " Abfragen.\n";
+echo 'Der Transform liefert ' . count($rows) . ' gültige Messwerte, '
+    . ($audit['input_rows'] - $audit['output_rows']) . " verworfen.\n\n";
 
-exit($status === 'success' ? 0 : 1);
+// ---------------------------------------------------------------------------
+// 7. Stationen suchen, sonst anlegen
+// ---------------------------------------------------------------------------
+//
+// In observations steht nicht «2044», sondern die id dieser Station. Das
+// Muster «suchen, sonst anlegen» kennen wir aus Code-Along 12.
+//
+// Neu: Gibt es die Station schon, aktualisieren wir ihre Stammdaten. Ändert
+// das BAFU zum Beispiel einen Namen, steht er so auch bei uns richtig.
+
+$findStation = $pdo->prepare('SELECT id FROM stations WHERE station_no = ?');
+
+$insertStation = $pdo->prepare(
+    'INSERT INTO stations (station_no, name, river_name, site_name, catchment_name,
+                           latitude, longitude, elevation, status, coverage_from, sort_order)
+     VALUES (:station_no, :name, :river_name, :site_name, :catchment_name,
+             :latitude, :longitude, :elevation, :status, :coverage_from, :sort_order)'
+);
+
+$updateStation = $pdo->prepare(
+    'UPDATE stations
+     SET name = :name, river_name = :river_name, site_name = :site_name,
+         catchment_name = :catchment_name, latitude = :latitude, longitude = :longitude,
+         elevation = :elevation, status = :status, coverage_from = :coverage_from,
+         sort_order = :sort_order, is_active = 1
+     WHERE station_no = :station_no'
+);
+
+// $stationIds ist ein Merkzettel: Stationsnummer => id.
+$stationIds = [];
+
+foreach ($stations as $stationNo => $station) {
+    $findStation->execute([$stationNo]);
+    $id = $findStation->fetchColumn();
+
+    if ($id === false) {
+        $insertStation->execute($station);
+        $id = $pdo->lastInsertId();
+    } else {
+        $updateStation->execute($station);
+    }
+
+    $stationIds[$stationNo] = (int) $id;
+}
+
+// Stationen, die nicht mehr in extract.php stehen, blenden wir aus. Gelöscht
+// wird nichts: Ihre Messwerte bleiben in der Datenbank.
+$placeholders = implode(',', array_fill(0, count($stationIds), '?'));
+$pdo->prepare("UPDATE stations SET is_active = 0 WHERE station_no NOT IN ($placeholders)")
+    ->execute(array_map('strval', array_keys($stationIds)));
+
+echo 'Stationen in der Datenbank: ' . implode(', ', array_keys($stationIds)) . ".\n\n";
+
+// ---------------------------------------------------------------------------
+// 8. Messwerte schreiben
+// ---------------------------------------------------------------------------
+//
+// Wir sammeln die Daten laufend. Den alten Stand löschen (Muster 1) wäre
+// deshalb falsch. Wir brauchen Muster 2: dazuschreiben ohne Duplikate.
+//
+// Die UNIQUE-Regel (station_id, parameter_code, measured_at) in schema.sql
+// lässt pro Messung nur eine Zeile zu. INSERT IGNORE würde eine vorhandene
+// Zeile einfach überspringen – eine Korrektur des BAFU käme dann nie an.
+// Deshalb ON DUPLICATE KEY UPDATE: Gibt es die Zeile schon, werden Wert und
+// Freigabestatus überschrieben.
+//
+// updated_at und import_run_id ändern sich nur, wenn sich wirklich etwas
+// geändert hat. Sie stehen zuerst, weil sie value und release_state noch mit
+// den alten Werten vergleichen müssen. (<=> ist ein Vergleich, der auch NULL
+// mit NULL vergleichen kann.)
+//
+// rowCount() verrät, was passiert ist: 1 = neu, 2 = geändert, 0 = gleich.
+
+$insertObservation = $pdo->prepare(
+    'INSERT INTO observations (station_id, parameter_code, measured_at, obs_date, value, release_state, import_run_id)
+     VALUES (:station_id, :parameter_code, :measured_at, :obs_date, :value, :release_state, :import_run_id)
+     ON DUPLICATE KEY UPDATE
+        updated_at    = IF(value <=> VALUES(value) AND release_state <=> VALUES(release_state),
+                           updated_at, CURRENT_TIMESTAMP),
+        import_run_id = IF(value <=> VALUES(value) AND release_state <=> VALUES(release_state),
+                           import_run_id, VALUES(import_run_id)),
+        value         = VALUES(value),
+        release_state = VALUES(release_state)'
+);
+
+$inserted = 0;
+$updated = 0;
+$unchanged = 0;
+
+// Eine Transaktion um alle Zeilen: Entweder landen alle in der Datenbank oder
+// keine. Nebenbei ist das bei 30 000 Zeilen viel schneller, weil die Datenbank
+// nur einmal am Schluss speichert.
+$pdo->beginTransaction();
+
+try {
+    foreach ($rows as $row) {
+        $insertObservation->execute([
+            'station_id' => $stationIds[$row['station_no']],
+            'parameter_code' => $row['parameter_code'],
+            'measured_at' => $row['measured_at'],
+            'obs_date' => $row['obs_date'],
+            'value' => $row['value'],
+            'release_state' => $row['release_state'],
+            'import_run_id' => $runId,
+        ]);
+
+        $changed = $insertObservation->rowCount();
+
+        if ($changed === 1) {
+            $inserted++;
+        } elseif ($changed === 2) {
+            $updated++;
+        } else {
+            $unchanged++;
+        }
+    }
+
+    $pdo->commit();
+} catch (Throwable $e) {
+    $pdo->rollBack();
+
+    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
+        ->execute([mb_substr($e->getMessage(), 0, 1000), $runId]);
+
+    exit('Speichern fehlgeschlagen: ' . $e->getMessage() . "\n");
+}
+
+echo "{$inserted} neu, {$updated} geändert, {$unchanged} unverändert.\n\n";
+
+// ---------------------------------------------------------------------------
+// 9. Protokoll abschliessen
+// ---------------------------------------------------------------------------
+//
+// «partial» heisst: Ein Zeitfenster ist beim Extract fehlgeschlagen, die
+// anderen sind gespeichert. Der nächste Lauf holt die Lücke nach.
+
+$failedWindows = $result['extract_audit']['failed_windows'];
+$status = $failedWindows === 0 ? 'success' : 'partial';
+
+$pdo->prepare(
+    'UPDATE import_runs
+     SET finished_at = UTC_TIMESTAMP(), status = :status,
+         api_requests = :api_requests, rows_received = :rows_received,
+         rows_inserted = :rows_inserted, rows_updated = :rows_updated,
+         rows_unchanged = :rows_unchanged, rows_rejected = :rows_rejected, message = :message
+     WHERE id = :id'
+)->execute([
+    'status' => $status,
+    'api_requests' => $result['extract_audit']['api_requests'],
+    'rows_received' => $audit['input_rows'],
+    'rows_inserted' => $inserted,
+    'rows_updated' => $updated,
+    'rows_unchanged' => $unchanged,
+    'rows_rejected' => $audit['input_rows'] - $audit['output_rows'],
+    'message' => $failedWindows > 0 ? "{$failedWindows} Zeitfenster fehlgeschlagen." : null,
+    'id' => $runId,
+]);
+
+// Protokollzeilen älter als ein Jahr löschen. Die Messwerte bleiben.
+$pdo->exec('DELETE FROM import_runs WHERE started_at < UTC_TIMESTAMP() - INTERVAL 365 DAY');
+
+// ---------------------------------------------------------------------------
+// 10. Kontrolle
+// ---------------------------------------------------------------------------
+//
+// Zählen allein genügt nicht. Deshalb lesen wir pro Station den jüngsten Tag
+// zurück – genau diese Werte zeigt am nächsten Morgen die Website.
+
+$total = $pdo->query('SELECT COUNT(*) FROM observations')->fetchColumn();
+echo "Status: {$status}. In observations stehen jetzt {$total} Messwerte.\n\n";
+
+$latestValues = $pdo->query(
+    "SELECT s.river_name, o.obs_date, o.parameter_code, o.value
+     FROM observations AS o
+     JOIN stations AS s ON s.id = o.station_id
+     WHERE s.is_active = 1
+       AND o.obs_date = (SELECT MAX(obs_date) FROM observations WHERE station_id = s.id)
+     ORDER BY s.sort_order, o.parameter_code"
+);
+
+foreach ($latestValues->fetchAll() as $value) {
+    echo '  ' . $value['river_name'] . "\t" . $value['obs_date'] . "\t"
+        . $value['parameter_code'] . "\t" . $value['value'] . "\n";
+}
+
+echo "\nVerworfen im Transform:\n";
+
+$rejected = $audit['input_rows'] - $audit['output_rows'];
+
+if ($rejected === 0) {
+    echo "  keine\n";
+}
+
+foreach ($audit as $reason => $count) {
+    if ($count > 0 && $reason !== 'input_rows' && $reason !== 'output_rows') {
+        echo "  {$reason}: {$count}\n";
+    }
+}

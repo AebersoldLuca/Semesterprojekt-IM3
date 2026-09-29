@@ -11,14 +11,13 @@ config.php
 .vscode/
 *.iml
 
-# Temporäre ETL-Dateien (z.B. Lock-Datei des laufenden Imports)
+# Temporäre ETL-Dateien
 etl/data/*
 !etl/data/.gitkeep
 !etl/data/.htaccess
 
-# Logs
-logs/*
-!logs/.htaccess
+# Alte Log-Dateien aus früheren Versionen
+logs/
 
 # Datenbank-Dumps
 *.sql.gz
@@ -30,3 +29,6 @@ Thumbs.db
 
 # Interne Vorbereitung für den Marktstand (nicht Teil der Abgabe)
 docs/marktstand/spickzettel.*
+
+# Unterlagen aus dem Unterricht (Kursmaterial, nicht Teil des Projekts)
+IM3_PHP_DB_DataStory/

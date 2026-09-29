@@ -1,38 +1,43 @@
-/* ==================================================================
-   DataStory «Heisser als der Hitzesommer» – Frontend
-   ------------------------------------------------------------------
-   Datenfluss:  MySQL → unload.php → JSON (Datenvertrag v1) → script.js → D3
-
-   Dieses Script ruft AUSSCHLIESSLICH unload.php auf (eigene Datenbank).
-   Die BAFU-API wird im Frontend nie verwendet.
-
-   Jeder Datensatz aus unload.php hat genau die Felder des Datenvertrags:
-     station_no, river_name, station_name, date,
-     water_temperature_c, water_level_deviation_cm, release_state
-
-   Hypothese der Story:
-     «2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger
-      Wasser als im Hitzesommer 2022.»
-
-   Aufbau:
-     0) Konfiguration & Hilfsfunktionen
-     1) Datenabruf (unload.php)
-     2) Start & Zustand
-     3) Vergleich 2022/2026 berechnen
-     4) Einstieg: Temperatur-Streifen
-     5) Auf einen Blick: Kennzahlen
-     6) Stationen
-     7) Jahr gegen Jahr (Grafik je Fluss, Vergrössern/Vollbild)
-     8) Urteil
-     9) Explorer: Zeitverlauf aller Flüsse
-    10) Tooltip, Crosshair, Resize, Lesefortschritt
-   ================================================================== */
+/**
+ * DataStory «Heisser als der Hitzesommer» – das Frontend.
+ *
+ * Aufgebaut wie das Beispielprojekt Hitzesommer aus dem Unterricht:
+ *
+ *   Holen      unload.php fragen – nie die BAFU-API direkt
+ *   Umformen   Datensätze nach Station gruppieren, 2022 und 2026 vergleichen
+ *   Zeichnen   Temperatur-Streifen, eine Grafik pro Fluss, Zeitverlauf (D3)
+ *   Reagieren  Schalter ändern den Zustand und zeichnen neu
+ *
+ * Jeder Datensatz aus unload.php hat genau die Felder des Datenvertrags:
+ *
+ *   station_no, river_name, station_name, date,
+ *   water_temperature_c, water_level_deviation_cm, release_state
+ *
+ * Hypothese der Story: «2026 waren die Flüsse im Mittelland bisher wärmer
+ * und führten weniger Wasser als im Hitzesommer 2022.»
+ *
+ * Aufbau dieser Datei:
+ *
+ *    0) Einstellungen und Hilfsfunktionen
+ *    1) Holen: unload.php
+ *    2) Start und Zustand
+ *    3) Umformen: Vergleich 2022/2026
+ *    4) Einstieg: Temperatur-Streifen
+ *    5) Auf einen Blick: Kennzahlen
+ *    6) Stationen
+ *    7) Jahr gegen Jahr (Grafik je Fluss, Vergrössern/Vollbild)
+ *    8) Urteil
+ *    9) Explorer: Zeitverlauf aller Flüsse
+ *   10) Tooltip, Crosshair, Resize, Lesefortschritt
+ */
 
 'use strict';
 
-/* ---------- 0) Konfiguration & Hilfsfunktionen ------------------- */
+/* ---------- 0) Einstellungen und Hilfsfunktionen ----------------- */
 
-const UNLOAD_URL = 'unload.php';
+// Alles, was man beim Anpassen als Erstes sucht, steht zuoberst.
+
+const ENDPUNKT = 'unload.php';
 
 /** Die zwei verglichenen Jahre der Hypothese */
 const YEARS = { ref: 2022, cur: 2026 };
@@ -131,35 +136,60 @@ function groupByStation(records) {
   return map;
 }
 
-/* ---------- 1) Datenabruf: nur unload.php ------------------------ */
+/* ---------- 1) Holen: unload.php -------------------------------- */
 
+// Jede Adresse wird nur einmal gefragt. Wer im Explorer hin- und herschaltet,
+// bekommt die Daten beim zweiten Mal sofort.
 const cache = new Map();
 
 /**
- * Ruft unload.php mit Filtern aus dem Datenvertrag auf
- * (stations, parameter, years, from, to) und gibt die Datensätze zurück.
+ * Fragt den eigenen Endpunkt. Die Filter aus dem Datenvertrag (stations,
+ * parameter, years, from, to) werden an die URL gehängt und dort zu einem
+ * WHERE im SQL.
  */
 async function unload(filters = {}) {
-  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v != null && v !== ''));
-  const url = params.toString() ? `${UNLOAD_URL}?${params}` : UNLOAD_URL;
-  if (cache.has(url)) return cache.get(url);
+  const params = new URLSearchParams();
+
+  for (const [name, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(name, value);
+    }
+  }
+
+  const url = params.toString() === '' ? ENDPUNKT : `${ENDPUNKT}?${params}`;
+
+  if (cache.has(url)) {
+    return cache.get(url);
+  }
 
   let response;
+
   try {
-    response = await fetch(url, { headers: { Accept: 'application/json' } });
+    response = await fetch(url);
   } catch {
+    // fetch() wirft nur, wenn gar keine Antwort kommt – zum Beispiel ohne Netz.
     throw new Error('Der Server ist nicht erreichbar. Bitte Internetverbindung prüfen.');
   }
-  let data = null;
-  try {
-    data = await response.json();
-  } catch {
-    /* keine JSON-Antwort */
+
+  // fetch() wirft keinen Fehler, wenn der Server mit 400 oder 500 antwortet –
+  // es ist ja eine Antwort angekommen. unload.php schickt dann eine Meldung
+  // als JSON mit, die wir anzeigen.
+  if (!response.ok) {
+    const answer = await response.json().catch(() => null);
+    throw new Error(answer?.error ?? `Der Endpunkt antwortet mit Status ${response.status}.`);
   }
-  if (!response.ok || !Array.isArray(data)) {
-    throw new Error(data?.error || `Die Daten konnten nicht geladen werden (HTTP ${response.status}).`);
+
+  // Fängt den Fall ab, dass der Server das PHP nicht ausgeführt hat. Ohne die
+  // Prüfung meldet der Browser «Unexpected token '<'».
+  const contentType = response.headers.get('content-type') ?? '';
+
+  if (!contentType.includes('application/json')) {
+    throw new Error('Die Antwort ist kein JSON. Öffne unload.php direkt im Browser.');
   }
+
+  const data = await response.json();
   cache.set(url, data);
+
   return data;
 }
 
@@ -177,7 +207,7 @@ function setStatus(id, message) {
   node.hidden = !message;
 }
 
-/* ---------- 2) Start & Zustand ----------------------------------- */
+/* ---------- 2) Start und Zustand ---------------------------------- */
 
 const state = {
   recent: null,          // Map station_no → Datensätze der letzten 365 Tage
@@ -275,7 +305,7 @@ const displayName = (no) => {
   return n ? `${n.river_name} – ${n.station_name}` : no;
 };
 
-/* ---------- 3) Vergleich 2022/2026 berechnen --------------------- */
+/* ---------- 3) Umformen: Vergleich 2022/2026 ---------------------- */
 
 /**
  * Datensätze beider Jahre → Kennzahlen pro Station. Fair verglichen wird

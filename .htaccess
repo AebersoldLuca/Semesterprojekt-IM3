@@ -7,8 +7,8 @@
     Require all denied
 </FilesMatch>
 
-# Zugangsdaten, DB-Verbindung und Doku nicht direkt abrufbar
-<FilesMatch "^(config\.php|config\.example\.php|db\.php|README\.md)$">
+# Zugangsdaten und Doku nicht direkt abrufbar
+<FilesMatch "^(config\.php|config\.example\.php|README\.md)$">
     Require all denied
 </FilesMatch>
 
@@ -21,4 +21,9 @@ RedirectMatch 404 /\.(git|idea|vscode)(/|$)
     <FilesMatch "\.(html|js|css)$">
         Header set Cache-Control "no-cache"
     </FilesMatch>
+</IfModule>
+
+# JSON aus unload.php komprimiert ausliefern (die Antwort hat einige tausend Datensätze)
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
 </IfModule>
