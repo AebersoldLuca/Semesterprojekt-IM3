@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 
@@ -50,6 +50,7 @@
       <span>Jan</span><span>Feb</span><span>Mär</span><span>Apr</span><span>Mai</span><span>Jun</span>
       <span>Jul</span><span>Aug</span><span>Sep</span><span>Okt</span><span>Nov</span><span>Dez</span>
     </div>
+    <div class="stripes__facts" id="stripes-facts"></div>
     <figcaption class="stripes__caption">
       <span id="stripes-caption">Wassertemperatur, ein Streifen pro Tag.</span>
       <span class="stripes__legend" aria-hidden="true">
@@ -60,6 +61,30 @@
 </header>
 
 <main>
+
+<!-- =============================================================
+     MITMACHEN: KURVE SELBST ZEICHNEN
+     ============================================================= -->
+<section class="section section--wide" id="schaetzen" aria-labelledby="schaetzen-title">
+  <p class="section__label"><span>00</span>Mitmachen</p>
+  <div class="section__body">
+    <h2 id="schaetzen-title">Schätz mal!</h2>
+    <p class="section__lead">
+      Die graue Linie ist die <span data-slot="draw-river">Limmat</span> im Hitzesommer 2022, die weisse der Januar 2026.
+      Wie ging es 2026 weiter? Zeichne die Kurve mit der Maus oder dem Finger weiter.
+    </p>
+    <div class="draw">
+      <div class="chart draw__chart" id="draw-chart"
+           aria-label="Zeichenfläche: Wassertemperatur 2022 und Januar 2026. Mit «Direkt zur Lösung» erscheint die echte Kurve."></div>
+      <div class="draw__actions">
+        <button type="button" class="btn btn--primary" id="draw-reveal" disabled>Auflösen</button>
+        <button type="button" class="btn" id="draw-skip">Direkt zur Lösung</button>
+        <button type="button" class="btn" id="draw-reset" hidden>Nochmals zeichnen</button>
+      </div>
+      <p class="draw__result" id="draw-result" aria-live="polite"></p>
+    </div>
+  </div>
+</section>
 
 <!-- =============================================================
      2) DIE ZAHLEN
@@ -130,10 +155,10 @@
 <section class="section section--wide" id="jahresvergleich" aria-labelledby="jahresvergleich-title">
   <p class="section__label"><span>03</span>Vergleich</p>
   <div class="section__body">
-    <h2 id="jahresvergleich-title">Jahr gegen Jahr</h2>
+    <h2 id="jahresvergleich-title">Wer hat mehr geschwitzt?</h2>
     <p class="section__lead">
-      Jeder Fluss als Band: oben 2022, unten 2026. Je dünner das Band, desto tiefer der Wasserstand.
-      Je röter, desto wärmer das Wasser. Mit der Maus oder dem Finger lässt sich jeder Tag ablesen.
+      Jeder Fluss fliesst hier als Band durchs Jahr, oben 2022, unten 2026. Wird das Band dünn, führt der Fluss
+      wenig Wasser. Wird es rot, ist das Wasser warm. Fahr mit der Maus oder dem Finger darüber.
     </p>
 
     <div class="toolbar" role="group" aria-label="Einstellungen Flussbänder">
@@ -168,9 +193,21 @@
   <p class="section__label"><span>04</span>Urteil</p>
   <div class="section__body">
     <h2 id="urteil-title">Stimmt die These?</h2>
-    <p class="section__lead">Zieh den Stichtag zurück oder spiel das Jahr ab: Ab wann hätte die These gestimmt?</p>
+
+    <div class="tip" id="verdict-tip">
+      <p class="tip__q">Was tippst du: Waren Limmat, Thur und Rhein 2026 bisher wärmer <em>und</em> tiefer als 2022?</p>
+      <div class="tip__options">
+        <button type="button" class="btn" data-tip="Ja">Ja</button>
+        <button type="button" class="btn" data-tip="Teilweise">Teilweise</button>
+        <button type="button" class="btn" data-tip="Nein">Nein</button>
+      </div>
+      <button type="button" class="tip__skip" data-tip="">Ohne Tipp zum Ergebnis</button>
+    </div>
+
+    <div class="reveal-body" id="verdict-body" tabindex="-1" hidden>
+    <p class="tip-feedback" id="tip-feedback" hidden></p>
+    <p class="section__lead">Zieh den Stichtag zurück: Ab wann hätte die These gestimmt?</p>
     <div class="timeline">
-      <button type="button" class="timeline__play" id="timeline-play" aria-pressed="false">▶ Jahr abspielen</button>
       <label class="timeline__label" for="timeline-range">
         Stichtag <output id="timeline-output" for="timeline-range">–</output>
       </label>
@@ -178,6 +215,7 @@
     </div>
     <div class="verdict" id="verdict">
       <p class="muted">Urteil wird berechnet …</p>
+    </div>
     </div>
   </div>
 </section>
@@ -310,6 +348,6 @@
 
 <!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN, alle DATEN kommen aus unload.php. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=11" defer></script>
+<script src="script.js?v=13" defer></script>
 </body>
 </html>
