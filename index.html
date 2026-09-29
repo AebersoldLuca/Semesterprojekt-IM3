@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -24,22 +24,15 @@
 <header class="hero" id="top">
   <div class="topbar">
     <span>Hydrologie Schweiz</span>
-    <span class="topbar__mid">2022 ↔ 2026</span>
     <span>Datenstand <span data-slot="data-stand">–</span></span>
   </div>
 
   <div class="hero__grid">
     <h1 class="hero__title">Heisser als der <em>Hitzesommer</em></h1>
-    <div class="hero__side">
-      <p class="hero__lede">
-        Im Sommer 2022 waren die Schweizer Flüsse so warm und so tief wie selten zuvor.
-        Die Messstationen des Bundes zeigen: 2026 war es an einigen Orten noch extremer.
-      </p>
-      <p class="thesis">
-        <span class="thesis__label">These</span>
-        2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.
-      </p>
-    </div>
+    <p class="thesis">
+      <span class="thesis__label">These</span>
+      2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.
+    </p>
   </div>
 
   <figure class="stripes" id="stripes" aria-describedby="stripes-caption">
@@ -50,9 +43,9 @@
       <span>Jan</span><span>Feb</span><span>Mär</span><span>Apr</span><span>Mai</span><span>Jun</span>
       <span>Jul</span><span>Aug</span><span>Sep</span><span>Okt</span><span>Nov</span><span>Dez</span>
     </div>
-    <div class="stripes__facts" id="stripes-facts"></div>
+    <p class="hero-summary" id="stripes-facts"></p>
     <figcaption class="stripes__caption">
-      <span id="stripes-caption">Wassertemperatur, ein Streifen pro Tag.</span>
+      <span id="stripes-caption">Wassertemperatur pro Tag.</span>
       <span class="stripes__legend" aria-hidden="true">
         <span data-slot="ramp-min">kalt</span><span class="stripes__ramp"></span><span data-slot="ramp-max">warm</span>
       </span>
@@ -264,14 +257,16 @@
   <div class="section__body">
     <h2 id="methodik-title">Daten und Methode</h2>
 
-    <ol class="pipeline" aria-label="Datenfluss">
-      <li><span>BAFU-API</span><small>GraphQL</small></li>
-      <li><span>Extract</span><small>PHP</small></li>
-      <li><span>Transform</span><small>prüfen</small></li>
-      <li class="is-db"><span>Load</span><small>MySQL</small></li>
-      <li><span>Unload</span><small>JSON</small></li>
-      <li><span>Story</span><small>D3</small></li>
-    </ol>
+    <p class="section__lead">So kommen die Daten vom Bund auf diese Seite. Klick auf einen Schritt.</p>
+    <div class="pipeline" id="pipeline" role="tablist" aria-label="Datenfluss: Schritt wählen">
+      <button type="button" class="pipeline__step" role="tab" data-step="api" aria-selected="true" aria-controls="step-panel"><span class="pipeline__num">01</span><span class="pipeline__name">BAFU-API</span><small>GraphQL</small></button>
+      <button type="button" class="pipeline__step" role="tab" data-step="extract" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">02</span><span class="pipeline__name">Extract</span><small>PHP</small></button>
+      <button type="button" class="pipeline__step" role="tab" data-step="transform" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">03</span><span class="pipeline__name">Transform</span><small>prüfen</small></button>
+      <button type="button" class="pipeline__step" role="tab" data-step="load" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">04</span><span class="pipeline__name">Load</span><small>MySQL</small></button>
+      <button type="button" class="pipeline__step" role="tab" data-step="unload" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">05</span><span class="pipeline__name">Unload</span><small>JSON</small></button>
+      <button type="button" class="pipeline__step" role="tab" data-step="story" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">06</span><span class="pipeline__name">Story</span><small>D3</small></button>
+    </div>
+    <div class="step-panel" id="step-panel" role="tabpanel" aria-live="polite"></div>
 
     <dl class="facts">
       <div><dt>Quelle</dt><dd>Bundesamt für Umwelt BAFU, <a href="https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations" rel="noopener">Hydrologische Beobachtungen</a></dd></div>
@@ -339,6 +334,6 @@
 
 <!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN, alle DATEN kommen aus unload.php. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=15" defer></script>
+<script src="script.js?v=16" defer></script>
 </body>
 </html>

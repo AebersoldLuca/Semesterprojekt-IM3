@@ -300,6 +300,7 @@ async function init() {
   renderVerdict();
   setupTip();
   renderFacts();
+  setupMethod();
   renderLegend();
   loadTimeseries();
   setupResize();
@@ -569,7 +570,7 @@ function renderStripes() {
   setSlot('ramp-min', '0 °C');
   setSlot('ramp-max', '24 °C');
   document.getElementById('stripes-caption').textContent =
-    `Wassertemperatur der ${names.river_name} in ${names.station_name}, Tag für Tag. Oben ${YEARS.ref}, unten ${YEARS.cur} bis ${cutoffLabel()}.`;
+    `Wassertemperatur der ${names.river_name} in ${names.station_name} pro Tag, bis ${cutoffLabel()}.`;
 
   const width = rowsBox.clientWidth;
   if (width < 100) return; // noch nicht sichtbar
@@ -655,25 +656,14 @@ function renderStripes() {
   requestAnimationFrame(() => requestAnimationFrame(() => figure.classList.add('is-drawn')));
 }
 
-/** Die Zahlen unter den Flüssen: heissester Tag und Tage über 20 °C, bis zum Stichtag */
+/** Eine Zeile unter den Flüssen: Tage über 20 °C, beide Jahre bis zum Stichtag */
 function renderHeroFacts(s) {
   const box = document.getElementById('stripes-facts');
-  const cutoff = state.cmp.cutoff;
-  const card = (year, records, summary, extra) => {
-    const hot = hottestDay(records.filter((r) => r.date.slice(5) <= cutoff));
-    return el('div', { class: 'hero-fact' },
-      el('span', { class: 'hero-fact__year' }, String(year)),
-      hot ? el('span', { class: 'hero-fact__item' }, icon('thermo'), 'Heissester Tag ',
-        el('strong', {}, fmtTemp(hot.water_temperature_c)), el('small', {}, fmtDayMonth(parseDate(hot.date)))) : null,
-      el('span', { class: 'hero-fact__item' }, icon('sun'), el('strong', {}, `${fmt0(summary.days_ge_20)} Tage`), 'über 20 °C'),
-      extra);
-  };
-  const more = s.cur.summary.days_ge_20 - s.ref.summary.days_ge_20;
-  box.replaceChildren(
-    card(YEARS.ref, s.ref.records, s.ref.summary, null),
-    card(YEARS.cur, s.cur.records, s.cur.summary, more !== 0
-      ? el('span', { class: 'hero-fact__more' }, `${more > 0 ? '+' : '−'}${fmt0(Math.abs(more))} Tage ${more > 0 ? 'mehr' : 'weniger'} als ${YEARS.ref}`)
-      : null));
+  const cur = s.cur.summary.days_ge_20;
+  const ref = s.ref.summary.days_ge_20;
+  box.replaceChildren(icon('sun'),
+    el('span', {}, `${YEARS.cur} war die ${state.names.get(s.no).river_name} an `, el('strong', {}, `${fmt0(cur)}\u00a0Tagen`),
+      ` über 20\u00a0°C warm, ${YEARS.ref} an ${fmt0(ref)}.`));
 }
 
 /* ---------- 5) Auf einen Blick: Kennzahlen ----------------------- */
@@ -1144,7 +1134,7 @@ function setupTip() {
 /* ----- Einen Fluss auf der ganzen Seite hervorheben ----- */
 
 /**
- * Alles, was zu einer Station gehört, trägt data-station: Flussband,
+ * Alles, was zu einer Station gehört, trägt data-station: Jahresvergleich,
  * Kennzahl, Messstelle, Zeile im Urteil, Linie und Knopf im Explorer.
  * Maus darüber hebt den Fluss überall hervor, die anderen werden blass.
  * Ein Klick hält die Auswahl fest, bis man erneut klickt oder Esc drückt.
@@ -1197,6 +1187,109 @@ function renderFacts() {
   const checked = d3.sum(state.cmp.stations, (s) => s.cur.summary.checked);
   const total = d3.sum(state.cmp.stations, (s) => s.cur.summary.count);
   if (total) setSlot('fact-checked', `${fmt0((checked / total) * 100)} % der Tage vollständig vom BAFU geprüft`);
+}
+
+/* ----- Methode: der Datenfluss zum Anklicken ----- */
+
+/**
+ * Sechs Schritte von der BAFU-API bis zur Grafik. Der gewählte Schritt ist
+ * orange, darunter steht, was dort passiert. Die Beispiele sind echte Werte
+ * aus den Daten, die diese Seite gerade von unload.php geladen hat.
+ */
+const METHOD_STEPS = {
+  api: {
+    title: 'BAFU-API', tech: 'data.bafu.admin.ch/api',
+    text: 'Das Bundesamt für Umwelt veröffentlicht die Messwerte seiner hydrologischen Stationen über eine offene GraphQL-API. Wir nutzen die Tagesmittel von Wassertemperatur und Wasserstand, seit dem 1. Januar 2020.',
+    live: () => [el('p', { class: 'step-panel__label' }, 'Unsere sechs Messstationen'),
+      el('ul', { class: 'step-list' }, STATIONS.filter((st) => state.names.has(st.no)).map((st) =>
+        el('li', {}, el('b', {}, displayName(st.no)), el('small', {}, `Nr. ${st.no} · ${st.group === 'mittelland' ? 'Mittelland' : 'Alpen'}`))))],
+  },
+  extract: {
+    title: 'Extract', tech: 'etl/extract.php',
+    text: 'Jeden Morgen startet ein Cronjob den Import. Das PHP-Script fragt die API per POST ab. Pro Abfrage liefert sie höchstens 10 000 Zeilen, deshalb wird der Zeitraum in Fenster von 666 Tagen aufgeteilt.',
+    live: () => [el('p', { class: 'step-panel__label' }, 'Die Abfrage an die API (GraphQL)'),
+      el('pre', {}, 'data_1day_mean(where: {\n  station: { no: { _in: ["2243", "2044", …] } }\n  parameterName: { _in: ["W", "WT"] }\n  timestamp: { _gte: $from, _lt: $to }\n}) {\n  parameterName unitSymbol timestamp value releaseState\n}')],
+  },
+  transform: {
+    title: 'Transform', tech: 'etl/transform.php',
+    text: 'Jede Zeile wird geprüft: bekannte Station, richtige Einheit, gültiger Zeitstempel, plausibler Wert. Aus der UTC-Zeit der API wird der Kalendertag in Schweizer Zeit. Was nicht passt, wird verworfen und gezählt, nie geschätzt.',
+    live: () => {
+      const r = latestRecord((rec) => rec.water_temperature_c != null);
+      if (!r) return [];
+      const utcStart = fmtIsoDate(d3.utcDay.offset(parseDate(r.date), -1));
+      return [el('p', { class: 'step-panel__label' }, `Ein echter Messwert der ${r.river_name}: so kommt er von der API …`),
+        el('pre', {}, JSON.stringify({ station: { no: r.station_no }, parameterName: 'WT', unitSymbol: '°C', timestamp: `${utcStart}T23:00:00Z`, value: r.water_temperature_c }, null, 2)),
+        el('p', { class: 'step-panel__arrow' }, '↓ Einheit geprüft, Wert plausibel, 23:00 UTC = neuer Tag in Schweizer Zeit'),
+        el('p', { class: 'step-panel__label' }, '… und so wird er gespeichert'),
+        el('pre', {}, JSON.stringify({ station_no: r.station_no, parameter_code: 'WT', obs_date: r.date, value: r.water_temperature_c }, null, 2))];
+    },
+  },
+  load: {
+    title: 'Load', tech: 'etl/load.php · MySQL',
+    text: 'Die geprüften Werte kommen in unsere eigene MySQL-Datenbank. Eine UNIQUE-Regel verhindert doppelte Messwerte. Jeder Import lädt die letzten 60 Tage neu, damit Korrekturen des BAFU ankommen. Fällt die API aus, bleiben die Daten hier erhalten.',
+    live: () => [el('p', { class: 'step-panel__label' }, 'Vier Tabellen'),
+      el('ul', { class: 'step-list' },
+        el('li', {}, el('b', {}, 'observations'), el('small', {}, 'ein Messwert pro Zeile')),
+        el('li', {}, el('b', {}, 'stations'), el('small', {}, 'die sechs Messstationen')),
+        el('li', {}, el('b', {}, 'parameters'), el('small', {}, 'W und WT mit Einheit')),
+        el('li', {}, el('b', {}, 'import_runs'), el('small', {}, 'Protokoll jedes Imports')))],
+  },
+  unload: {
+    title: 'Unload', tech: 'unload.php → JSON',
+    text: 'unload.php liest nur aus unserer Datenbank und liefert JSON nach dem Datenvertrag: eine Station an einem Tag, sieben Felder. Mit Filtern in der URL kommt nur, was die Grafik braucht.',
+    live: () => {
+      const r = latestRecord(() => true);
+      return r ? [el('p', { class: 'step-panel__label' }, `Ein Datensatz, so wie ihn diese Seite gerade geladen hat`),
+        el('pre', {}, JSON.stringify(r, null, 2)),
+        el('p', { class: 'step-panel__arrow' }, `Beispiel: unload.php?years=${YEARS.ref},${YEARS.cur}`)] : [];
+    },
+  },
+  story: {
+    title: 'Story', tech: 'script.js · D3.js',
+    text: 'script.js holt die Daten mit fetch() und zeichnet die Grafiken mit D3.js. Die BAFU-API wird im Browser nie aufgerufen. Alle Zahlen im Text werden aus den Daten berechnet und ändern sich nach jedem Import.',
+    live: () => [el('p', { class: 'step-panel__label' }, 'Auf dieser Seite gerade geladen'),
+      el('p', { class: 'step-count' }, `${fmt0(loadedRecordCount())} Datensätze`)],
+  },
+};
+
+/** Der jüngste Datensatz (aus den letzten 365 Tagen), der eine Bedingung erfüllt */
+function latestRecord(test) {
+  const all = [...state.recent.values()].flat().filter(test);
+  return d3.greatest(all, (r) => r.date);
+}
+
+function loadedRecordCount() {
+  const recent = d3.sum([...state.recent.values()], (list) => list.length);
+  return recent + state.compareRecords.length + (state.ts.records?.length ?? 0);
+}
+
+function setupMethod() {
+  const tabs = [...document.querySelectorAll('#pipeline .pipeline__step')];
+  const select = (tab, focus = false) => {
+    const index = tabs.indexOf(tab);
+    tabs.forEach((t, i) => {
+      t.setAttribute('aria-selected', String(t === tab));
+      t.tabIndex = t === tab ? 0 : -1;
+      t.classList.toggle('is-done', i < index);
+    });
+    document.getElementById('pipeline').style.setProperty('--progress', `${(index / (tabs.length - 1)) * 100}%`);
+    if (focus) tab.focus();
+    const step = METHOD_STEPS[tab.dataset.step];
+    document.getElementById('step-panel').replaceChildren(
+      el('h3', {}, step.title, el('span', {}, step.tech)),
+      el('p', {}, step.text),
+      el('div', { class: 'step-panel__live' }, step.live()));
+  };
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => select(tab));
+    tab.addEventListener('keydown', (event) => {
+      const dir = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!dir) return;
+      event.preventDefault();
+      select(tabs[(i + dir + tabs.length) % tabs.length], true);
+    });
+  });
+  select(tabs[0]);
 }
 
 /* ---------- 9) Explorer: Zeitverlauf aller Flüsse ----------------- */
