@@ -1,68 +1,72 @@
 <?php
 /**
- * Unload – der JSON-Endpunkt für die Story-Seite.
+ * Unload – die Daten an die Website ausliefern.
  *
- * Liest die gespeicherten Tagesmittel aus unserer Datenbank und liefert sie
- * nach dem Datenvertrag als JSON. Hier wird nie die BAFU-API gefragt: Die
- * Website läuft auch dann, wenn die API gerade nicht erreichbar ist.
+ * Die Website fragt diese Datei: «Gib mir die Messwerte.» unload.php liest
+ * sie aus unserer eigenen Datenbank und schickt sie als Liste zurück, in
+ * einem Format, das JavaScript direkt versteht (JSON).
  *
- * Datenfluss dieser Datei:
+ * Wichtig: Hier wird nie beim BAFU gefragt. Deshalb läuft die Website auch
+ * dann, wenn das BAFU gerade nicht erreichbar ist.
  *
- *   Anfrage aus dem Browser     GET /unload.php?years=2022,2026
- *     -> geprüfte Parameter     stations, parameter, years, from, to – sonst 400
- *       -> SELECT mit JOIN      observations + stations, pro Station und Tag eine Zeile
- *         -> Datenvertrag       normalizeRecord()
- *           -> JSON-Antwort     eine Liste von Datensätzen
+ * Ablauf:
  *
- * Datenvertrag (Version 1) – ein Datensatz ist eine Station an einem Tag:
+ *   1. Die Website fragt, z.B.: unload.php?years=2022,2026
+ *   2. Prüfen, ob die Frage gültig ist (sonst: Fehler 400)
+ *   3. Passende Werte aus der Datenbank lesen
+ *   4. In die vereinbarte Form bringen (den «Datenvertrag»)
+ *   5. Als JSON zurückschicken
+ *
+ * Der Datenvertrag ist die Abmachung zwischen Backend und Frontend: So sieht
+ * jeder Datensatz aus. Ein Datensatz ist eine Station an einem Tag:
  *
  *   {
- *     "station_no": "2044",               BAFU-Nummer der Station
- *     "river_name": "Thur",               Gewässer
+ *     "station_no": "2044",               Nummer der Station beim BAFU
+ *     "river_name": "Thur",               Name des Flusses
  *     "station_name": "Andelfingen",      Ort der Station
- *     "date": "2026-09-27",               Kalendertag des Tagesmittels
- *     "water_temperature_c": 16.8,        Wassertemperatur in °C, sonst null
- *     "water_level_deviation_cm": -27,    Abweichung vom mittleren Pegel in cm, sonst null
- *     "release_state": 2                  1 provisorisch, 2 validiert, 3 definitiv, sonst null
+ *     "date": "2026-09-27",               Tag
+ *     "water_temperature_c": 16.8,        Wassertemperatur in °C (oder null = kein Wert)
+ *     "water_level_deviation_cm": -27,    Wasserstand: so viele cm über/unter normal (oder null)
+ *     "release_state": 2                  vom BAFU geprüft? 1 nein, 2 ja, 3 endgültig (oder null)
  *   }
  *
- * Filter (alle optional, kombinierbar):
+ * Mögliche Fragen (alle freiwillig und kombinierbar):
  *
- *   GET unload.php                              alle Flüsse, die letzten 365 Tage
- *   GET unload.php?stations=2044,2243           nur diese Stationen
- *   GET unload.php?parameter=WT                 nur Temperatur (W = nur Wasserstand)
- *   GET unload.php?years=2022,2026              nur diese Jahre
- *   GET unload.php?from=2026-01-01&to=2026-06-30  nur dieser Zeitraum
+ *   unload.php                                 alle Flüsse, letzte 365 Tage
+ *   unload.php?stations=2044,2243              nur diese Flüsse
+ *   unload.php?parameter=WT                    nur Temperatur (W = nur Wasserstand)
+ *   unload.php?years=2022,2026                 nur diese Jahre
+ *   unload.php?from=2026-01-01&to=2026-06-30   nur dieser Zeitraum
  */
 
+// Die Antwort ist JSON, nicht eine Webseite.
 header('Content-Type: application/json; charset=utf-8');
 
+// Die Zugangsdaten zur Datenbank (geheim, nicht auf GitHub).
 require __DIR__ . '/config.php';
 
 // ---------------------------------------------------------------------------
-// Der Datenvertrag
+// Einen Datensatz in die vereinbarte Form bringen
 // ---------------------------------------------------------------------------
 //
-// An genau einer Stelle steht, welche Felder die Antwort hat und welchen Typ.
-// DECIMAL kommt bei PDO als Text zurück – ohne (float) stünde im JSON "16.8"
-// statt 16.8.
+// Hier steht an einer einzigen Stelle, wie ein Datensatz aussieht.
+// Drei Dinge werden dabei noch ausgerechnet:
 //
-// Drei Felder werden hier erst berechnet:
-//
-// - station_name: Das BAFU schreibt manchmal «Rheinfelden, Messstation». Der
-//   Ort ist der Teil vor dem Komma.
-// - water_level_deviation_cm: Ein Pegel in m ü.M. ist zwischen zwei Flüssen
-//   nicht vergleichbar (Rhein 260 m, Aare 570 m). Deshalb liefern wir die
-//   Abweichung vom mittleren Pegel dieser Station, in Zentimetern.
-// - release_state: Ein Datensatz enthält bis zu zwei Messwerte mit je eigenem
-//   Prüfstatus. Wir liefern den vorsichtigeren: den tieferen der beiden, und
-//   null, sobald einer der vorhandenen Werte gar keinen Status hat.
+// - Der Ort: Das BAFU schreibt manchmal «Rheinfelden, Messstation».
+//   Wir nehmen nur den Teil vor dem Komma.
+// - Der Wasserstand: Die Flüsse liegen unterschiedlich hoch (Rhein 260 m,
+//   Aare 570 m über Meer). Das kann man nicht vergleichen. Deshalb zeigen
+//   wir, wie viele Zentimeter ein Fluss über oder unter seinem eigenen
+//   Durchschnitt liegt.
+// - Der Prüfstatus: Temperatur und Wasserstand haben je einen eigenen.
+//   Wir nehmen den vorsichtigeren der beiden.
 
 function normalizeRecord(array $row): array
 {
     $hasTemperature = $row['wt'] !== null;
     $hasLevel = $row['w'] !== null && $row['mean_level'] !== null;
 
+    // Prüfstatus der vorhandenen Werte sammeln.
     $states = [];
     if ($hasTemperature) {
         $states[] = $row['wt_state'];
@@ -71,6 +75,7 @@ function normalizeRecord(array $row): array
         $states[] = $row['w_state'];
     }
 
+    // Den tieferen (vorsichtigeren) Status nehmen. Fehlt einer: unbekannt.
     $releaseState = null;
     if (count($states) > 0 && !in_array(null, $states, true)) {
         $releaseState = (int) min($states);
@@ -84,6 +89,7 @@ function normalizeRecord(array $row): array
         'water_temperature_c' => $hasTemperature
             ? round((float) $row['wt'], 2)
             : null,
+        // Abweichung vom Durchschnitt, von Metern in Zentimeter umgerechnet.
         'water_level_deviation_cm' => $hasLevel
             ? round(((float) $row['w'] - (float) $row['mean_level']) * 100, 1)
             : null,
@@ -92,11 +98,11 @@ function normalizeRecord(array $row): array
 }
 
 // ---------------------------------------------------------------------------
-// Eine falsch gestellte Frage abweisen
+// Eine ungültige Frage freundlich ablehnen
 // ---------------------------------------------------------------------------
 //
-// 400 heisst: Die Anfrage war falsch, nicht der Server. Die Meldung sagt, was
-// erlaubt ist – das hilft der fragenden Seite weiter.
+// Fehler 400 heisst: «Die Frage war falsch gestellt.» Die Meldung sagt, was
+// erlaubt wäre.
 
 function rejectRequest(string $message): void
 {
@@ -106,13 +112,13 @@ function rejectRequest(string $message): void
 }
 
 // ---------------------------------------------------------------------------
-// Filter aus $_GET lesen und prüfen
+// Die Frage der Website lesen und prüfen
 // ---------------------------------------------------------------------------
 //
-// Jeder Wert, der von aussen kommt, wird geprüft, bevor er in die Abfrage
-// darf. Im SQL steht er danach trotzdem nur als Platzhalter.
+// Alles, was von aussen kommt, wird zuerst kontrolliert. So kann niemand
+// über die Adresse Unsinn oder Schadcode in die Datenbank schmuggeln.
 //
-// Listen kommen kommagetrennt: «2022,2026» wird zu ['2022', '2026'].
+// Listen kommen mit Komma getrennt: «2022,2026» wird zu zwei Jahren.
 
 $stations = array_filter(array_map('trim', explode(',', $_GET['stations'] ?? '')));
 $parameter = trim($_GET['parameter'] ?? '');
@@ -120,34 +126,35 @@ $years = array_filter(array_map('trim', explode(',', $_GET['years'] ?? '')));
 $from = trim($_GET['from'] ?? '');
 $to = trim($_GET['to'] ?? '');
 
-// Stationen: vierstellige BAFU-Nummern. Eine Station, die es nicht gibt, ist
-// kein Fehler – die Antwort ist dann einfach eine leere Liste.
+// Stationen: genau vier Ziffern. Gibt es die Station nicht, kommt einfach
+// eine leere Liste zurück.
 foreach ($stations as $stationNo) {
     if (!preg_match('/^\d{4}$/', $stationNo)) {
         rejectRequest('Ungültige Stationsnummer. Beispiel: stations=2044,2243');
     }
 }
 
-// Messgrösse: genau einer von zwei bekannten Werten.
+// Messgrösse: nur W oder WT.
 $allowedParameters = ['W', 'WT'];
 
 if ($parameter !== '' && !in_array($parameter, $allowedParameters, true)) {
     rejectRequest('Unbekannte Messgrösse. Erlaubt: W, WT');
 }
 
-// Jahre: vierstellig, höchstens zehn auf einmal.
+// Jahre: vierstellige Jahreszahlen.
 foreach ($years as $year) {
     if (!preg_match('/^(19|20)\d{2}$/', $year)) {
         rejectRequest('Ungültige Jahreszahl. Beispiel: years=2022,2026');
     }
 }
 
+// Nicht zu viel auf einmal.
 if (count($stations) > 20 || count($years) > 10) {
     rejectRequest('Zu viele Werte auf einmal.');
 }
 
-// Datum: streng im Format JJJJ-MM-TT. Die zweite Prüfung weist auch einen
-// 30. Februar ab, den PHP sonst still in den 2. März verwandeln würde.
+// Datum: genau im Format Jahr-Monat-Tag, und es muss den Tag wirklich geben
+// (einen 30. Februar zum Beispiel nicht).
 foreach (['from' => $from, 'to' => $to] as $name => $date) {
     if ($date === '') {
         continue;
@@ -160,21 +167,23 @@ foreach (['from' => $from, 'to' => $to] as $name => $date) {
     }
 }
 
+// Der Anfang muss vor dem Ende liegen.
 if ($from !== '' && $to !== '' && $from > $to) {
     rejectRequest('from muss vor to liegen.');
 }
 
 // ---------------------------------------------------------------------------
-// Aus der Datenbank lesen
+// Die Werte aus der Datenbank lesen
 // ---------------------------------------------------------------------------
 
 try {
     $pdo = new PDO($dsn, $username, $password, $options);
 
-    // Ohne Jahr und ohne Datum: die letzten 365 Tage bis zum jüngsten Messtag.
+    // Ohne Jahr und ohne Datum: die letzten 365 Tage.
     if (count($years) === 0 && $from === '' && $to === '') {
         $latest = $pdo->query('SELECT MAX(obs_date) FROM observations')->fetchColumn();
 
+        // Noch gar keine Daten: leere Liste zurückgeben.
         if ($latest === null) {
             echo '[]';
             exit;
@@ -184,8 +193,9 @@ try {
         $from = date('Y-m-d', strtotime($latest . ' -364 days'));
     }
 
-    // Die Bedingungen wachsen mit den Filtern. Für jede Liste braucht es so
-    // viele Fragezeichen, wie sie Werte hat: IN (?, ?).
+    // Die Datenbank-Frage Stück für Stück zusammensetzen, je nach Filter.
+    // Die Werte selbst kommen nie direkt in die Frage, sondern als
+    // Platzhalter (?). Das schützt die Datenbank vor Angriffen.
     $where = ['s.is_active = 1'];
     $params = [];
 
@@ -214,13 +224,12 @@ try {
         $params[] = $to;
     }
 
-    // In observations steht jeder Messwert in einer eigenen Zeile. Der
-    // Datenvertrag will pro Station und Tag EINE Zeile mit beiden Werten.
-    // GROUP BY fasst die zwei Zeilen zusammen, MAX(CASE …) holt je den
-    // passenden Wert heraus.
+    // In der Datenbank stehen Temperatur und Wasserstand in getrennten
+    // Zeilen. Für die Website legen wir sie zusammen: eine Zeile pro Station
+    // und Tag, mit beiden Werten nebeneinander.
     //
-    // Der LEFT JOIN auf b liefert pro Station den mittleren Pegel über alle
-    // gespeicherten Tage – die Nulllinie für water_level_deviation_cm.
+    // Zusätzlich rechnen wir für jede Station den durchschnittlichen
+    // Wasserstand aus. Das ist die «Null-Linie» für den Vergleich.
     $sql = "SELECT s.station_no,
                    s.river_name,
                    s.name AS station_name,
@@ -247,10 +256,14 @@ try {
 
     $rows = $statement->fetchAll();
 
+    // Jede Zeile in die vereinbarte Form bringen ...
     $data = array_map('normalizeRecord', $rows);
 
+    // ... und als JSON an die Website schicken.
     echo json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 } catch (Throwable $error) {
+    // Etwas ist schiefgegangen. Die genaue Meldung kommt ins Server-Protokoll,
+    // auf der Website erscheint nur ein kurzer, harmloser Satz (Fehler 500).
     http_response_code(500);
     error_log('unload.php: ' . $error->getMessage());
 

@@ -1,40 +1,42 @@
 <?php
 /**
- * Extract – Messwerte von der BAFU-API holen.
+ * Extract – die Messwerte beim Bund abholen.
  *
- * Holt Wasserstand und Wassertemperatur (Tagesmittel) unserer sechs
- * Messstationen und gibt die Rohdaten unverändert als PHP-Array weiter.
- * Hier wird nichts gerechnet, nichts umbenannt und nichts gefiltert – das ist
- * Aufgabe von transform.php.
+ * Das Bundesamt für Umwelt (BAFU) misst an vielen Flüssen, wie warm das
+ * Wasser ist und wie hoch es steht. Diese Werte stellt es im Internet zur
+ * Verfügung. Diese Datei fragt dort nach und holt die Werte für unsere sechs
+ * Flüsse ab.
  *
- * Datenfluss dieser Datei:
+ * Hier wird noch nichts geprüft oder verändert. Die Daten werden nur
+ * abgeholt und so, wie sie ankommen, an transform.php weitergegeben.
  *
- *   BAFU-API (GraphQL, POST)
- *     -> 1 Abfrage: Stammdaten der 6 Stationen
- *       -> 1 oder mehr Abfragen: Tagesmittel, aufgeteilt in Zeitfenster
- *         -> return: Rohdaten als PHP-Array
+ * Ablauf:
  *
- * Eigenheiten der BAFU-API (Details in docs/api-analyse.md):
+ *   1. Fragen: «Welche sechs Messstationen sind das?»
+ *   2. Fragen: «Welche Tageswerte gibt es dort?»
+ *   3. Alles als Liste an transform.php weitergeben
  *
- * - Es ist eine GraphQL-API. Die Abfrage geht per POST als JSON an eine
- *   einzige Adresse, nicht als Parameter in der URL.
- * - Pro Abfrage kommen höchstens 10 000 Zeilen, und es gibt keine Seiten
- *   (keine Pagination). Deshalb teilen wir den Zeitraum in Fenster auf.
- * - Ohne User-Agent antwortet die API mit HTTP 403.
+ * Drei Besonderheiten der BAFU-Schnittstelle:
  *
- * Aufgerufen wird die Datei von transform.php, und zwar mit include. Den
- * Startzeitpunkt legt load.php in der Variablen $startDate fest.
+ * - Man schickt keine einfache Web-Adresse, sondern einen kleinen
+ *   Fragebogen (eine «GraphQL-Abfrage»).
+ * - Pro Frage gibt es höchstens 10 000 Werte zurück. Deshalb fragen wir in
+ *   mehreren Portionen.
+ * - Man muss sich mit einem Namen vorstellen, sonst bekommt man keine Antwort.
+ *
+ * Gestartet wird diese Datei nicht direkt, sondern über transform.php.
  */
 
 // ---------------------------------------------------------------------------
 // 1. Einstellungen
 // ---------------------------------------------------------------------------
 
+// Die Adresse, unter der das BAFU seine Daten anbietet.
 $endpoint = 'https://data.bafu.admin.ch/api';
 
-// Die sechs Messstationen der DataStory (offizielle BAFU-Nummern).
-// Geprüft per API: in Betrieb, Wasserstand und Wassertemperatur lückenlos ab
-// 2020. Die Reihenfolge ist auch die Reihenfolge in unload.php.
+// Unsere sechs Messstationen, mit ihrer offiziellen Nummer beim BAFU.
+// Alle messen seit 2020 lückenlos Temperatur und Wasserstand.
+// In dieser Reihenfolge erscheinen sie später auch auf der Website.
 $stationNos = [
     '2243', // Limmat – Baden
     '2044', // Thur – Andelfingen
@@ -44,30 +46,33 @@ $stationNos = [
     '2068', // Ticino – Riazzino
 ];
 
-// W = Wasserstand, WT = Wassertemperatur
+// Was wir messen wollen: W = Wasserstand, WT = Wassertemperatur.
 $parameterCodes = ['W', 'WT'];
 
-// Die API erlaubt 10 000 Zeilen pro Abfrage. Wir planen mit 8000, als Reserve.
+// Das BAFU gibt höchstens 10 000 Werte pro Frage heraus.
+// Wir fragen sicherheitshalber nur nach 8000 auf einmal.
 $maxRowsPerRequest = 8000;
 
 // ---------------------------------------------------------------------------
-// 2. Der Helfer fetchJson()
+// 2. Der Helfer fetchJson(): eine Frage ins Internet schicken
 // ---------------------------------------------------------------------------
 //
-// Derselbe Helfer wie in Code-Along 07, mit drei Erweiterungen für die
-// BAFU-API:
+// Diesen Helfer kennen wir aus dem Unterricht. Er schickt eine Anfrage an eine
+// Web-Adresse und gibt die Antwort als Liste zurück, mit der PHP arbeiten kann.
 //
-// - $postData: GraphQL erwartet die Abfrage per POST als JSON.
-// - CURLOPT_USERAGENT: ohne ihn blockt die BAFU-API mit HTTP 403.
-// - Fehler werden geprüft. Statt still null zurückzugeben, bricht die Funktion
-//   laut ab. Der Code der Exception ist der HTTP-Status (0 = kein Netz).
+// Für das BAFU haben wir ihn etwas erweitert:
+// - Er kann einen Fragebogen mitschicken ($postData).
+// - Er stellt sich mit einem Namen vor (User-Agent). Ohne Namen sagt das
+//   BAFU «kein Zugang».
+// - Klappt etwas nicht, meldet er den Fehler laut, statt still nichts zu tun.
 
 function fetchJson(string $url, ?array $postData = null): array {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60); // grosse Zeitfenster brauchen länger als 10 s
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60); // höchstens 60 Sekunden auf die Antwort warten
     curl_setopt($ch, CURLOPT_USERAGENT, 'FHGR-IM3-DataStory/1.0 (Studienprojekt)');
 
+    // Den Fragebogen mitschicken, falls es einen gibt.
     if ($postData !== null) {
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
@@ -77,28 +82,29 @@ function fetchJson(string $url, ?array $postData = null): array {
     $response = curl_exec($ch);
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+    // Gar keine Antwort, zum Beispiel weil das Internet weg ist.
     if ($response === false) {
         throw new RuntimeException('Netzwerkfehler: ' . curl_error($ch), 0);
     }
 
+    // Eine Antwort, aber nicht «alles in Ordnung» (das wäre der Code 200).
     if ($status !== 200) {
         throw new RuntimeException("Die BAFU-API antwortet mit HTTP {$status}.", $status);
     }
 
+    // Die Antwort ist Text im JSON-Format. Daraus wird eine PHP-Liste.
     return json_decode($response, true, 512, JSON_THROW_ON_ERROR);
 }
 
 // ---------------------------------------------------------------------------
-// 3. Eine GraphQL-Abfrage schicken
+// 3. Fragen und es bei Bedarf nochmals versuchen
 // ---------------------------------------------------------------------------
 //
-// Schickt die Abfrage mit fetchJson() und gibt den Teil «data» zurück.
+// Manchmal ist der Server des BAFU kurz überlastet. Dann geben wir nicht
+// sofort auf, sondern versuchen es bis zu dreimal. Dazwischen warten wir
+// jedes Mal etwas länger: 2, dann 4, dann 8 Sekunden.
 //
-// Ist die API kurz überlastet (kein Netz, 403, 429 oder 5xx), versuchen wir es
-// bis zu dreimal und warten dazwischen 2, 4 und 8 Sekunden.
-//
-// GraphQL meldet manche Fehler mit Status 200 und einem Schlüssel «errors» im
-// JSON. Auch die gelten als Fehler.
+// Auch eine Antwort mit einer Fehlermeldung darin gilt als Fehler.
 
 function fetchGraphql(string $url, string $query, array $variables): array {
     $attempt = 1;
@@ -106,16 +112,17 @@ function fetchGraphql(string $url, string $query, array $variables): array {
     while (true) {
         try {
             $answer = fetchJson($url, ['query' => $query, 'variables' => $variables]);
-            break;
+            break; // hat geklappt
         } catch (RuntimeException $e) {
+            // Lohnt sich ein neuer Versuch? Nur bei «Server beschäftigt» oder «kein Netz».
             $status = $e->getCode();
             $retry = $status === 0 || $status === 403 || $status === 429 || $status >= 500;
 
             if (!$retry || $attempt > 3) {
-                throw $e;
+                throw $e; // aufgeben
             }
 
-            sleep(2 ** $attempt);
+            sleep(2 ** $attempt); // kurz warten: 2, 4 oder 8 Sekunden
             $attempt++;
         }
     }
@@ -128,14 +135,14 @@ function fetchGraphql(string $url, string $query, array $variables): array {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Zeitraum festlegen
+// 4. Ab wann holen wir Daten?
 // ---------------------------------------------------------------------------
 //
-// $startDate kommt aus load.php. Fehlt sie, holen wir die letzten 7 Tage.
+// Das Startdatum bestimmt load.php. Fehlt es, holen wir die letzten 7 Tage.
 //
-// Ein Tagesmittel des BAFU beginnt um Mitternacht Schweizer Normalzeit (MEZ).
-// Die API rechnet aber in UTC, eine Stunde früher. «Etc/GMT-1» ist die feste
-// Zeitzone UTC+1 (das Minus ist in dieser Schreibweise kein Tippfehler).
+// Zeitzonen: Das BAFU rechnet in Weltzeit (UTC). Ein Schweizer Tag beginnt
+// aber eine Stunde früher. «Etc/GMT-1» bedeutet «Schweizer Winterzeit».
+// So landet jeder Messwert am richtigen Tag.
 
 $dayZone = new DateTimeZone('Etc/GMT-1');
 $utc = new DateTimeZone('UTC');
@@ -145,18 +152,20 @@ $startDate = $startDate ?? date('Y-m-d', strtotime('-7 days'));
 $from = (new DateTimeImmutable($startDate, $dayZone))->setTimezone($utc);
 $to = (new DateTimeImmutable('tomorrow', $dayZone))->setTimezone($utc);
 
+// Ein kleines Protokoll: Wie oft haben wir gefragt, was hat nicht geklappt?
 $audit = [
     'api_requests' => 0,
     'failed_windows' => 0,
 ];
 
 // ---------------------------------------------------------------------------
-// 5. Stammdaten der Stationen holen
+// 5. Die Messstationen abholen
 // ---------------------------------------------------------------------------
 //
-// Name, Gewässer, Koordinaten und Status kommen direkt vom BAFU. So steht in
-// unserer Datenbank nichts, das wir selbst abgetippt haben.
+// Name, Fluss, Ort und Koordinaten kommen direkt vom BAFU. So haben wir
+// nichts von Hand abgetippt.
 
+// Der «Fragebogen» an das BAFU: Gib mir diese Angaben zu diesen Stationen.
 $stationQuery = '
 query Stations($nos: [String!]) {
   water { observations {
@@ -172,30 +181,33 @@ $audit['api_requests']++;
 
 $rawStations = $data['water']['observations']['stations'] ?? [];
 
+// Ohne Stationen können wir nichts machen: abbrechen.
 if (count($rawStations) === 0) {
     throw new RuntimeException('Die BAFU-API liefert keine unserer Stationen.');
 }
 
 // ---------------------------------------------------------------------------
-// 6. Messwerte in Zeitfenstern holen
+// 6. Die Messwerte in Portionen abholen
 // ---------------------------------------------------------------------------
 //
-// Pro Tag kommen 6 Stationen × 2 Messgrössen = 12 Zeilen. Mit 8000 Zeilen pro
-// Abfrage reicht ein Fenster also für 666 Tage. Von 2020 bis heute sind das
-// vier Abfragen, beim täglichen Update genügt eine.
+// Pro Tag gibt es 12 Werte: 6 Stationen mal 2 Messgrössen. In eine Portion
+// von 8000 Werten passen also 666 Tage. Für alle Daten seit 2020 braucht es
+// darum vier Portionen. Beim täglichen Update reicht eine.
 
 $rowsPerDay = count($stationNos) * count($parameterCodes);
 $daysPerWindow = intdiv($maxRowsPerRequest, $rowsPerDay);
 
+// Den Zeitraum in Portionen («Zeitfenster») aufteilen.
 $windows = [];
 for ($start = $from; $start < $to; $start = $end) {
     $end = min($to, $start->modify("+{$daysPerWindow} days"));
     $windows[] = [$start, $end];
 }
 
-// Wichtig: kein «limit» in der Abfrage. Mit limit schneidet die API bei 10 000
-// Zeilen still ab, ohne limit lehnt sie eine zu grosse Abfrage ab. Ein Fehler
-// ist besser als fehlende Daten, die niemand bemerkt.
+// Der Fragebogen für die Messwerte.
+// Wichtig: Wir setzen absichtlich keine Obergrenze («limit»). Mit Obergrenze
+// schneidet das BAFU heimlich ab, ohne Obergrenze meldet es einen Fehler.
+// Ein Fehler ist besser als fehlende Daten, die niemand bemerkt.
 $observationQuery = '
 query Observations($nos: [String!], $params: [String!], $from: AWSDateTime!, $to: AWSDateTime!) {
   water { observations {
@@ -212,10 +224,9 @@ query Observations($nos: [String!], $params: [String!], $from: AWSDateTime!, $to
 
 $rawObservations = [];
 
-// $windows ist eine Warteschlange: vorne eins wegnehmen, bei Bedarf halbiert
-// wieder vorne einreihen.
+// Die Portionen der Reihe nach abarbeiten, wie eine Warteschlange.
 while (count($windows) > 0) {
-    [$windowFrom, $windowTo] = array_shift($windows);
+    [$windowFrom, $windowTo] = array_shift($windows); // die nächste Portion nehmen
     $audit['api_requests']++;
 
     try {
@@ -227,38 +238,37 @@ while (count($windows) > 0) {
         ]);
         $rows = $data['water']['observations']['data_1day_mean'] ?? [];
 
-        // Sicherheitsprüfung: Eine volle Antwort behandeln wir wie «zu gross».
+        // Zur Sicherheit: Ist die Antwort randvoll, könnte etwas fehlen.
         if (count($rows) >= 10000) {
             throw new RuntimeException('Query returned more than 10000 rows');
         }
     } catch (RuntimeException $e) {
         $seconds = $windowTo->getTimestamp() - $windowFrom->getTimestamp();
 
-        // Zu viele Zeilen: Fenster halbieren und beide Hälften neu anfragen.
+        // Zu viele Werte auf einmal: Portion halbieren und beide Hälften
+        // vorne in die Warteschlange stellen.
         if (str_contains($e->getMessage(), 'more than 10000') && $seconds > 86400) {
             $middle = $windowFrom->setTimestamp($windowFrom->getTimestamp() + intdiv($seconds, 2));
             array_unshift($windows, [$windowFrom, $middle], [$middle, $windowTo]);
             continue;
         }
 
-        // Anderer Fehler: dieses Fenster zählen und überspringen. Die übrigen
-        // Fenster laden wir trotzdem – load.php meldet den Lauf als «partial».
+        // Ein anderer Fehler: diese Portion auslassen und notieren.
+        // Die übrigen holen wir trotzdem. Der nächste Lauf holt die Lücke nach.
         $audit['failed_windows']++;
         error_log('extract.php: ' . $e->getMessage());
         continue;
     }
 
-    // Die Zeilen des Fensters hinten an die Liste anhängen.
+    // Die Werte dieser Portion zur grossen Liste hinzufügen.
     foreach ($rows as $row) {
         $rawObservations[] = $row;
     }
 }
 
 // ---------------------------------------------------------------------------
-// 7. Rohdaten zurückgeben
+// 7. Alles an transform.php weitergeben
 // ---------------------------------------------------------------------------
-//
-// return beendet diese Datei. transform.php bekommt das Array mit include.
 
 return [
     'stations' => $rawStations,

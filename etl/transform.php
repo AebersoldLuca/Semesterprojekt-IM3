@@ -1,70 +1,77 @@
 <?php
 /**
- * Transform – Rohdaten prüfen und in die Form unserer Tabellen bringen.
+ * Transform – die Rohdaten prüfen und aufräumen.
  *
- * Holt die Rohdaten aus extract.php und liefert zwei saubere Listen: eine
- * Zeile pro Station und eine Zeile pro Messwert.
+ * Was vom BAFU kommt, ist noch nicht ganz sauber: Es kann falsche Einheiten,
+ * fehlende Werte oder Messfehler geben. Diese Datei prüft jeden einzelnen
+ * Wert und bringt ihn in die Form, die unsere Datenbank braucht.
+ *
+ * Ein fertiger Messwert sieht zum Beispiel so aus:
  *
  *   ['station_no' => '2044', 'parameter_code' => 'WT',
  *    'measured_at' => '2026-09-20 23:00:00', 'obs_date' => '2026-09-21',
  *    'value' => 16.8, 'release_state' => 1]
  *
- * Grundsatz: Es werden keine Werte erfunden, geschätzt oder aufgefüllt. Ein
- * ungültiger Wert wird verworfen und im Audit gezählt. In der Grafik erscheint
- * er als Lücke.
- *
- * Transform braucht keine Datenbank. Geschrieben wird erst in load.php.
+ * Unsere wichtigste Regel: Wir erfinden nichts. Ein Wert, der nicht stimmen
+ * kann, wird weggelassen und gezählt. Auf der Website fehlt er dann einfach.
+ * Wir raten nie, was dort hätte stehen können.
  */
 
+// Zuerst die Rohdaten von extract.php holen.
 $rawData = include __DIR__ . '/extract.php';
 
 // ---------------------------------------------------------------------------
-// 1. Regeln
+// 1. Unsere Prüfregeln
 // ---------------------------------------------------------------------------
 //
-// Pro Messgrösse: die Einheit, die die API liefern muss, und der Bereich, in
-// dem ein Wert plausibel ist. Der tiefste Punkt der Schweiz liegt auf 193 m,
-// kein BAFU-Pegel liegt über 2500 m ü.M.
+// Für jede Messgrösse: In welcher Einheit muss der Wert kommen, und welcher
+// Bereich ist überhaupt möglich?
+// - Wasserstand in Metern über Meer: zwischen 150 und 2500 m.
+//   (Der tiefste Punkt der Schweiz liegt auf 193 m.)
+// - Wassertemperatur in Grad: zwischen −0,5 und 35 °C.
 
 $parameterRules = [
     'W' => ['unit' => 'm ü.M.', 'min' => 150.0, 'max' => 2500.0],
     'WT' => ['unit' => '°C', 'min' => -0.5, 'max' => 35.0],
 ];
 
-// Die Zeitzone für den Kalendertag, gleich wie in extract.php.
+// Schweizer Zeit und Weltzeit, wie in extract.php.
 $dayZone = new DateTimeZone('Etc/GMT-1');
 $utc = new DateTimeZone('UTC');
 
+// Eine Strichliste: Wie viele Werte sind aus welchem Grund weggefallen?
 $audit = [
-    'input_rows' => 0,
-    'unknown_station' => 0,
-    'unknown_parameter' => 0,
-    'wrong_unit' => 0,
-    'invalid_timestamp' => 0,
-    'missing_value' => 0,
-    'not_numeric' => 0,
-    'implausible_value' => 0,
-    'sensor_zero' => 0,
-    'duplicate' => 0,
-    'output_rows' => 0,
+    'input_rows' => 0,         // so viele Werte kamen an
+    'unknown_station' => 0,    // fremde Station
+    'unknown_parameter' => 0,  // fremde Messgrösse
+    'wrong_unit' => 0,         // falsche Einheit
+    'invalid_timestamp' => 0,  // Datum nicht lesbar
+    'missing_value' => 0,      // kein Wert
+    'not_numeric' => 0,        // keine Zahl
+    'implausible_value' => 0,  // Wert unmöglich hoch oder tief
+    'sensor_zero' => 0,        // vermutlich ein defekter Sensor
+    'duplicate' => 0,          // doppelt geliefert
+    'output_rows' => 0,        // so viele Werte sind gut
 ];
 
 // ---------------------------------------------------------------------------
-// 2. Stationen
+// 2. Die Messstationen aufräumen
 // ---------------------------------------------------------------------------
 //
-// Die Felder der API heissen anders als unsere Spalten (riverName wird zu
-// river_name). Leere Texte werden zu null: «wir wissen es nicht» statt ''.
-// sort_order ist die Position in der Liste aus extract.php.
+// Das BAFU nennt die Felder etwas anders als wir (zum Beispiel «riverName»
+// statt «river_name»). Hier werden sie umbenannt. Ein leeres Feld wird zu
+// «unbekannt» (null), nicht zu einem leeren Text.
 
 $stations = [];
 
 foreach ($rawData['stations'] as $raw) {
     $stationNo = trim((string) ($raw['no'] ?? ''));
+
+    // An welcher Stelle steht die Station in unserer Liste? (für die Reihenfolge)
     $position = array_search($stationNo, $rawData['station_order'], true);
 
     if ($position === false) {
-        continue;
+        continue; // nicht eine unserer sechs Stationen
     }
 
     $stations[$stationNo] = [
@@ -83,18 +90,19 @@ foreach ($rawData['stations'] as $raw) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Messwerte
+// 3. Jeden Messwert prüfen
 // ---------------------------------------------------------------------------
 //
-// Jede Prüfung folgt demselben Muster: erst zählen, dann überspringen.
-// Kein Wert verschwindet ohne Zähler.
+// Jede Prüfung läuft gleich ab: Stimmt etwas nicht, machen wir einen Strich
+// in der Strichliste und gehen zum nächsten Wert («continue»).
+// So verschwindet kein Wert, ohne dass wir es wissen.
 
 $observations = [];
 
 foreach ($rawData['observations'] as $raw) {
     $audit['input_rows']++;
 
-    // Station: nur unsere sechs.
+    // Gehört der Wert zu einer unserer sechs Stationen?
     $stationNo = (string) ($raw['station']['no'] ?? '');
 
     if (!isset($stations[$stationNo])) {
@@ -102,7 +110,7 @@ foreach ($rawData['observations'] as $raw) {
         continue;
     }
 
-    // Messgrösse: nur W und WT.
+    // Ist es Wasserstand oder Wassertemperatur?
     $parameter = (string) ($raw['parameterName'] ?? '');
 
     if (!isset($parameterRules[$parameter])) {
@@ -112,13 +120,13 @@ foreach ($rawData['observations'] as $raw) {
 
     $rule = $parameterRules[$parameter];
 
-    // Einheit: Passt sie nicht, wären die Werte nicht vergleichbar.
+    // Stimmt die Einheit? Sonst würden wir Äpfel mit Birnen vergleichen.
     if (($raw['unitSymbol'] ?? null) !== $rule['unit']) {
         $audit['wrong_unit']++;
         continue;
     }
 
-    // Zeitstempel: streng im Format der API, z.B. 2026-09-20T23:00:00Z.
+    // Ist das Datum lesbar? Es muss genau so aussehen: 2026-09-20T23:00:00Z
     $timestamp = DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s\Z', (string) ($raw['timestamp'] ?? ''), $utc);
 
     if ($timestamp === false) {
@@ -126,10 +134,11 @@ foreach ($rawData['observations'] as $raw) {
         continue;
     }
 
-    // Der Kalendertag in Schweizer Zeit: 2026-09-20 23:00 UTC -> 2026-09-21.
+    // Welcher Tag ist das in der Schweiz?
+    // 20. September 23:00 Weltzeit ist in der Schweiz schon der 21. September.
     $obsDate = $timestamp->setTimezone($dayZone)->format('Y-m-d');
 
-    // Messwert: vorhanden, eine Zahl und im plausiblen Bereich?
+    // Gibt es einen Wert, und ist es eine Zahl?
     $value = $raw['value'] ?? null;
 
     if ($value === null) {
@@ -144,25 +153,27 @@ foreach ($rawData['observations'] as $raw) {
 
     $value = (float) $value;
 
+    // Ist der Wert überhaupt möglich? (siehe Prüfregeln oben)
     if ($value < $rule['min'] || $value > $rule['max']) {
         $audit['implausible_value']++;
         continue;
     }
 
-    // Freigabestatus: 1 provisorisch, 2 validiert, 3 definitiv, sonst null.
+    // Hat das BAFU den Wert schon kontrolliert?
+    // 1 = noch nicht geprüft, 2 = geprüft, 3 = endgültig. Sonst: unbekannt.
     $releaseState = $raw['releaseState'] ?? null;
     $releaseState = in_array((string) $releaseState, ['1', '2', '3'], true) ? (int) $releaseState : null;
 
-    // Sensorausfall: Ein Tagesmittel von genau 0.00 °C, das noch niemand
-    // geprüft hat, kommt z.B. bei Brienzwiler im März 2026 an drei Tagen in
-    // Folge vor – zwischen 5.0 °C und 2.6 °C. Für einen ganzen Tag ist das
-    // unplausibel. Validierte Werte (Status 2 oder 3) behalten wir immer.
+    // Defekter Sensor: Bei der Aare in Brienzwiler stand im März 2026 an drei
+    // Tagen genau 0.00 °C – davor 5.0 °C, danach 2.6 °C. Ein ganzer Tag mit
+    // exakt 0 Grad ist unrealistisch. Solche ungeprüften Nullen lassen wir weg.
+    // Hat das BAFU den Wert schon geprüft, behalten wir ihn.
     if ($parameter === 'WT' && $value == 0.0 && ($releaseState === null || $releaseState === 1)) {
         $audit['sensor_zero']++;
         continue;
     }
 
-    // Duplikate: derselbe Schlüssel wie die UNIQUE-Regel in der Datenbank.
+    // Doppelt geliefert? Jede Station, Messgrösse und Zeit darf es nur einmal geben.
     $measuredAt = $timestamp->format('Y-m-d H:i:s');
     $key = $stationNo . '|' . $parameter . '|' . $measuredAt;
 
@@ -171,6 +182,7 @@ foreach ($rawData['observations'] as $raw) {
         continue;
     }
 
+    // Alle Prüfungen bestanden: Der Wert kommt auf die saubere Liste.
     $observations[$key] = [
         'station_no' => $stationNo,
         'parameter_code' => $parameter,
@@ -184,11 +196,11 @@ foreach ($rawData['observations'] as $raw) {
 $audit['output_rows'] = count($observations);
 
 // ---------------------------------------------------------------------------
-// 4. Ergebnis zurückgeben
+// 4. Das Ergebnis an load.php weitergeben
 // ---------------------------------------------------------------------------
 //
-// In die Datenbank kommen stations und data. question, rules und audit sind
-// Begleitpapiere: Sie sagen, wie die Zahlen entstanden sind.
+// In die Datenbank kommen nur die Stationen und die Messwerte («data»).
+// Der Rest ist zum Nachlesen: unsere Frage, die Regeln und die Strichliste.
 
 return [
     'question' => '2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.',

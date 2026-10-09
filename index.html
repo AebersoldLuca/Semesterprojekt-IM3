@@ -19,7 +19,9 @@
 <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
 
 <!-- =============================================================
-     1) EINSTIEG
+     1) SEITENANFANG
+     Titel, These und die Grafik mit den zwei Flüssen.
+     Die Grafik füllt script.js mit den echten Daten.
      ============================================================= -->
 <header class="hero" id="top">
   <div class="topbar">
@@ -56,7 +58,9 @@
 <main>
 
 <!-- =============================================================
-     MITMACHEN: KURVE SELBST ZEICHNEN
+     «SCHÄTZ MAL!»
+     Man zeichnet selbst, wie warm die Limmat 2026 war, und deckt dann
+     die echte Kurve auf.
      ============================================================= -->
 <section class="section section--wide" id="schaetzen" aria-labelledby="schaetzen-title">
   <p class="section__label"><span>00</span>Mitmachen</p>
@@ -81,6 +85,7 @@
 
 <!-- =============================================================
      2) DIE ZAHLEN
+     Drei grosse Zahlen. Sie werden aus den Daten berechnet.
      ============================================================= -->
 <section class="section" id="zahlen" aria-labelledby="zahlen-title">
   <p class="section__label"><span>01</span>Die Zahlen</p>
@@ -97,6 +102,7 @@
 
 <!-- =============================================================
      3) KONTEXT
+     Warum 2022 der Massstab ist, Begriffe und die sechs Messstellen.
      ============================================================= -->
 <section class="section" id="kontext" aria-labelledby="kontext-title">
   <p class="section__label"><span>02</span>Kontext</p>
@@ -144,6 +150,7 @@
 
 <!-- =============================================================
      4) JAHR GEGEN JAHR
+     Eine Grafik pro Fluss: 2022 grau, 2026 weiss, der Unterschied farbig.
      ============================================================= -->
 <section class="section section--wide" id="jahresvergleich" aria-labelledby="jahresvergleich-title">
   <p class="section__label"><span>03</span>Vergleich</p>
@@ -179,6 +186,7 @@
 
 <!-- =============================================================
      5) URTEIL
+     Zuerst selbst tippen, dann zeigt die Seite das Ergebnis.
      ============================================================= -->
 <section class="section" id="urteil" aria-labelledby="urteil-title">
   <p class="section__label"><span>04</span>Urteil</p>
@@ -206,6 +214,7 @@
 
 <!-- =============================================================
      6) SELBST NACHSCHAUEN
+     Alle Daten seit 2020: Flüsse, Messgrösse und Zeitraum frei wählbar.
      ============================================================= -->
 <section class="section section--wide" id="vergleich" aria-labelledby="vergleich-title">
   <p class="section__label"><span>05</span>Explorer</p>
@@ -251,6 +260,7 @@
 
 <!-- =============================================================
      7) DATEN UND METHODE
+     Woher die Daten kommen und wie sie auf diese Seite gelangen.
      ============================================================= -->
 <section class="section" id="methodik" aria-labelledby="methodik-title">
   <p class="section__label"><span>06</span>Methode</p>
@@ -299,7 +309,7 @@
   <a href="#top">Nach oben ↑</a>
 </footer>
 
-<!-- Vergrösserte Ansicht eines Flusses -->
+<!-- Die grosse Ansicht eines Flusses (öffnet sich mit «Gross ↗») -->
 <dialog class="zoom" id="zoom" aria-labelledby="zoom-title">
   <!-- Detailansicht eines Flusses: Linien 2022/2026 und eingefärbte Differenz -->
   <div class="zoom__inner">
@@ -332,7 +342,8 @@
 <button type="button" class="focus-pill" id="focus-pill" hidden></button>
 <div class="toast" id="toast" role="alert" hidden></div>
 
-<!-- D3.js (Visualisierung). Nur die Bibliothek kommt vom CDN, alle DATEN kommen aus unload.php. -->
+<!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
+     Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
 <script src="script.js?v=17" defer></script>
 </body>

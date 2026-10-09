@@ -1,55 +1,59 @@
 /**
- * DataStory «Heisser als der Hitzesommer» – das Frontend.
+ * «Heisser als der Hitzesommer» – alles, was im Browser passiert.
  *
- * Aufgebaut wie das Beispielprojekt Hitzesommer aus dem Unterricht:
+ * Diese Datei macht aus Zahlen Bilder. Sie arbeitet in vier Schritten:
  *
- *   Holen      unload.php fragen – nie die BAFU-API direkt
- *   Umformen   Datensätze nach Station gruppieren, 2022 und 2026 vergleichen
- *   Zeichnen   Flüsse im Einstieg, Jahresvergleich pro Fluss, Zeitverlauf (D3)
- *   Reagieren  Hover zeigt Tageswerte, ein Klick hebt einen Fluss überall
- *              hervor, man zeichnet selbst und tippt vor dem Urteil
+ *   Holen      Die Messwerte bei unload.php abholen (also aus unserer
+ *              eigenen Datenbank, nie direkt beim BAFU).
+ *   Umformen   Die Werte sortieren und 2022 mit 2026 vergleichen.
+ *   Zeichnen   Daraus die Grafiken zeichnen. Dafür nutzen wir D3.js,
+ *              eine Programmbibliothek für Datengrafiken.
+ *   Reagieren  Auf die Maus, den Finger und die Knöpfe reagieren.
  *
- * Jeder Datensatz aus unload.php hat genau die Felder des Datenvertrags:
+ * Jeder Messwert kommt von unload.php in derselben Form (dem «Datenvertrag»):
  *
  *   station_no, river_name, station_name, date,
  *   water_temperature_c, water_level_deviation_cm, release_state
  *
- * Hypothese der Story: «2026 waren die Flüsse im Mittelland bisher wärmer
- * und führten weniger Wasser als im Hitzesommer 2022.»
+ * Unsere These: «2026 waren die Flüsse im Mittelland bisher wärmer und
+ * führten weniger Wasser als im Hitzesommer 2022.»
  *
- * Aufbau dieser Datei:
+ * Inhalt dieser Datei:
  *
- *    0) Einstellungen und Hilfsfunktionen
- *    1) Holen: unload.php
- *    2) Start und Zustand
- *    3) Umformen: Vergleich 2022/2026
- *    4) Einstieg: Temperatur-Streifen
- *    5) Auf einen Blick: Kennzahlen
- *    6) Stationen
- *    7) Jahr gegen Jahr: eine Grafik pro Fluss, Vergrössern/Vollbild
- *    8) Urteil mit Tipp, Hervorheben eines Flusses
- *    9) Explorer: Zeitverlauf aller Flüsse
- *   10) Tooltip, Crosshair, Resize, Lesefortschritt
+ *    0) Einstellungen und kleine Helfer
+ *    1) Daten holen
+ *    2) Start: was beim Öffnen der Seite passiert
+ *    3) 2022 und 2026 vergleichen, «Schätz mal!»
+ *    4) Die Grafik ganz oben (zwei Flüsse)
+ *    5) Die drei grossen Zahlen
+ *    6) Die sechs Messstellen
+ *    7) Jahr gegen Jahr: eine Grafik pro Fluss
+ *    8) Das Urteil, der Tipp, Hervorheben, Daten und Methode
+ *    9) Selbst nachschauen: alle Daten seit 2020
+ *   10) Was beim Darüberfahren und Scrollen passiert
  */
 
 'use strict';
 
 /* ---------- 0) Einstellungen und Hilfsfunktionen ----------------- */
 
-// Alles, was man beim Anpassen als Erstes sucht, steht zuoberst.
+// Hier stehen alle Einstellungen, die man am ehesten ändern möchte.
 
+// Hier holt die Seite ihre Daten ab.
 const ENDPUNKT = 'unload.php';
 
-/** Die zwei verglichenen Jahre der Hypothese */
+/** Die zwei Jahre, die wir vergleichen: 2022 (Hitzesommer) und 2026 */
 const YEARS = { ref: 2022, cur: 2026 };
 
-/** Station für die Temperatur-Streifen im Einstieg (Thur, Andelfingen) */
+/** Welcher Fluss ganz oben gezeigt wird: die Thur in Andelfingen */
 const HERO_STATION = '2044';
 
 /**
- * Redaktionelle Angaben zu den Stationen (keine Messdaten):
- * Gruppe für die Hypothese, Farbe (Reihenfolge der validierten Palette) und
- * ein Satz zur Rolle in der Story. Namen und Werte kommen aus unload.php.
+ * Was wir selbst zu jeder Station festlegen (keine Messwerte):
+ * - group: Mittelland (dort gilt die These) oder Alpen (zum Vergleich)
+ * - color: welche Farbe der Fluss in allen Grafiken hat
+ * - role: ein Satz, was diesen Fluss besonders macht
+ * Namen und Messwerte kommen aus der Datenbank.
  */
 const STATIONS = [
   { no: '2243', group: 'mittelland', color: 2, role: 'Abfluss des Zürichsees: Das Wasser war zuvor im See, dessen Oberfläche sich im Sommer stark erwärmt.' },
@@ -64,20 +68,24 @@ const GROUPS = [
   { key: 'alpen', title: 'Alpen · Kontrollgruppe' },
 ];
 
-/** Feld des Datenvertrags je Messgrösse */
+/** Wo im Datensatz die Temperatur bzw. der Wasserstand steht */
 const FIELD = { WT: 'water_temperature_c', W: 'water_level_deviation_cm' };
 
+/** Beschriftungen für Temperatur und Wasserstand */
 const PARAM_INFO = {
   WT: { label: 'Wassertemperatur', axis: 'in °C' },
   W:  { label: 'Wasserstand', axis: 'Abweichung vom mittleren Pegel in cm' },
 };
 
+/** Hat das BAFU den Wert schon geprüft? So steht es im Tooltip. */
 const RELEASE_LABEL = { 1: 'provisorisch', 2: 'validiert', 3: 'definitiv', null: 'ohne Status' };
 
+/** Monatsnamen auf Deutsch */
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
-// Deutsches (Schweizer) Datumsformat für D3
+// Damit Daten auf Deutsch erscheinen: «Do, 9. Juli 2026» statt «Thu, July 9».
+// Darunter: verschiedene Arten, ein Datum zu schreiben.
 const locale = d3.timeFormatLocale({
   dateTime: '%A, %e. %B %Y, %X', date: '%d.%m.%Y', time: '%H:%M:%S', periods: ['', ''],
   days: ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'],
@@ -92,21 +100,28 @@ const fmtIsoDate = d3.utcFormat('%Y-%m-%d');
 const fmtDotted = d3.utcFormat('%d.%m.%Y');
 const fmtDayShort = locale.utcFormat('%-d. %b');
 
+// Zahlen schön schreiben, Schweizer Art: 29'541 statt 29541.
 const nf = (digits) => new Intl.NumberFormat('de-CH', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const fmt1 = nf(1).format;
-const fmt0 = nf(0).format;
-/** Runden wie die Anzeige (Intl): halbe Werte weg von 0, also −33.5 → −34 */
+const fmt1 = nf(1).format; // mit einer Stelle nach dem Punkt: 16.8
+const fmt0 = nf(0).format; // ohne Nachkommastellen: 37
+/** Runden wie in der Anzeige, damit Differenzen genau aufgehen (−33.5 wird −34) */
 const roundShown = (v, digits = 0) => (Math.sign(v) * Math.round(Math.abs(v) * 10 ** digits)) / 10 ** digits;
+// Mit Vorzeichen: +0.9 oder −17
 const fmtSigned = (v, digits = 0) => (v > 0 ? '+' : v < 0 ? '−' : '±') + nf(digits).format(Math.abs(v));
-const fmtTemp = (v) => `${fmt1(v)}\u00a0°C`; // geschütztes Leerzeichen: «°C» bricht nie allein um
-const fmtCm = (v) => `${fmtSigned(v)}\u00a0cm`;
+const fmtTemp = (v) => `${fmt1(v)}\u00a0°C`; // «16.8 °C», das °C rutscht nie allein auf die nächste Zeile
+const fmtCm = (v) => `${fmtSigned(v)}\u00a0cm`; // «−17 cm»
 const longDate = (iso) => fmtDateLong(parseDate(iso));
 
+// Zu einer Stationsnummer die eigenen Angaben von oben finden.
 const stationInfo = (no) => STATIONS.find((s) => s.no === no);
-/** Farbe folgt der Station, nie ihrem Rang → CSS-Variable */
+/** Die Farbe eines Flusses. Jeder Fluss hat überall dieselbe Farbe. */
 const colorOf = (no) => `var(--series-${stationInfo(no)?.color ?? 1})`;
 
-/** Kleines DOM-Hilfsmittel. Texte immer per textContent (nie innerHTML mit Daten). */
+/**
+ * Ein kleiner Helfer, um Teile der Webseite zu bauen.
+ * Beispiel: el('p', { class: 'note' }, 'Hallo') ergibt <p class="note">Hallo</p>.
+ * Texte werden immer als reiner Text eingesetzt, nie als Code (Sicherheit).
+ */
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -121,6 +136,7 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+/** Einen Platzhalter im HTML (data-slot="…") mit Text füllen */
 function setSlot(name, content) {
   document.querySelectorAll(`[data-slot="${name}"]`).forEach((node) => {
     node.replaceChildren(...[].concat(content).map((c) => (c instanceof Node ? c : document.createTextNode(String(c)))));
@@ -128,8 +144,9 @@ function setSlot(name, content) {
 }
 
 /**
- * Kleine gezeichnete Symbole, als SVG direkt im Code (keine Bilddateien).
- * Linien in currentColor: Die Farbe kommt aus dem CSS.
+ * Kleine Symbole: Thermometer, Sonne, Welle, Stift.
+ * Jedes ist mit ein paar Linien gezeichnet, als Text im Code (keine Bilddateien).
+ * Die Farbe bestimmt das CSS.
  */
 const ICONS = {
   thermo: ['M10 13.6V5a2 2 0 1 1 4 0v8.6a4 4 0 1 1-4 0Z', 'M12 9.5v6.5'],
@@ -139,6 +156,7 @@ const ICONS = {
   pen: ['M4 20l1.2-4.4L16.4 4.4a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.4 18.8Z', 'M14.5 6.5l3 3'],
 };
 
+/** Ein Symbol als eigenes kleines Bild für den Text */
 function icon(name, cls = 'icon') {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -152,7 +170,7 @@ function icon(name, cls = 'icon') {
   return svg;
 }
 
-/** Dasselbe Symbol direkt in einer D3-Grafik, zentriert auf 0,0 */
+/** Dasselbe Symbol, aber direkt in eine Grafik hineingezeichnet */
 function appendIcon(selection, name, size) {
   const g = selection.append('g').attr('class', 'icon-g')
     .attr('transform', `translate(${-size / 2},${-size / 2}) scale(${size / 24})`);
@@ -160,9 +178,10 @@ function appendIcon(selection, name, size) {
   return g;
 }
 
+// Ein farbiger Punkt in der Farbe des Flusses (wie in einer Legende).
 const keySwatch = (no, cls = 'key') => el('span', { class: cls, style: `background:${colorOf(no)}`, 'aria-hidden': 'true' });
 
-/** Datensätze nach Station gruppieren (Reihenfolge wie von unload.php: nach Datum) */
+/** Die Messwerte nach Fluss sortieren: ein Stapel pro Station */
 function groupByStation(records) {
   const map = new Map();
   for (const r of records) {
@@ -172,16 +191,16 @@ function groupByStation(records) {
   return map;
 }
 
-/* ---------- 1) Holen: unload.php -------------------------------- */
+/* ---------- 1) Daten holen ---------------------------------------- */
 
-// Jede Adresse wird nur einmal gefragt. Wer im Explorer hin- und herschaltet,
-// bekommt die Daten beim zweiten Mal sofort.
+// Ein Zwischenspeicher: Was schon einmal geholt wurde, wird nicht nochmals
+// geholt. Wer hin- und herklickt, bekommt die Daten beim zweiten Mal sofort.
 const cache = new Map();
 
 /**
- * Fragt den eigenen Endpunkt. Die Filter aus dem Datenvertrag (stations,
- * parameter, years, from, to) werden an die URL gehängt und dort zu einem
- * WHERE im SQL.
+ * Fragt unload.php nach Daten.
+ * Wünsche wie «nur 2022 und 2026» werden an die Adresse angehängt,
+ * zum Beispiel: unload.php?years=2022,2026
  */
 async function unload(filters = {}) {
   const params = new URLSearchParams();
@@ -203,20 +222,19 @@ async function unload(filters = {}) {
   try {
     response = await fetch(url);
   } catch {
-    // fetch() wirft nur, wenn gar keine Antwort kommt – zum Beispiel ohne Netz.
+    // Gar keine Antwort, zum Beispiel weil das Internet weg ist.
     throw new Error('Der Server ist nicht erreichbar. Bitte Internetverbindung prüfen.');
   }
 
-  // fetch() wirft keinen Fehler, wenn der Server mit 400 oder 500 antwortet –
-  // es ist ja eine Antwort angekommen. unload.php schickt dann eine Meldung
-  // als JSON mit, die wir anzeigen.
+  // Eine Antwort kam, aber mit einem Fehler (zum Beispiel «Datenbank nicht
+  // erreichbar»). Dann zeigen wir die Meldung von unload.php an.
   if (!response.ok) {
     const answer = await response.json().catch(() => null);
     throw new Error(answer?.error ?? `Der Endpunkt antwortet mit Status ${response.status}.`);
   }
 
-  // Fängt den Fall ab, dass der Server das PHP nicht ausgeführt hat. Ohne die
-  // Prüfung meldet der Browser «Unexpected token '<'».
+  // Sicherheitsprüfung: Ist die Antwort wirklich Daten (JSON) und keine
+  // Fehlerseite? Sonst gäbe es eine unverständliche Fehlermeldung.
   const contentType = response.headers.get('content-type') ?? '';
 
   if (!contentType.includes('application/json')) {
@@ -224,11 +242,12 @@ async function unload(filters = {}) {
   }
 
   const data = await response.json();
-  cache.set(url, data);
+  cache.set(url, data); // für das nächste Mal merken
 
   return data;
 }
 
+/** Eine kurze Meldung unten am Bildschirm, die nach 8 Sekunden verschwindet */
 function showToast(message) {
   const toast = document.getElementById('toast');
   toast.textContent = message;
@@ -237,28 +256,39 @@ function showToast(message) {
   showToast.timer = setTimeout(() => (toast.hidden = true), 8000);
 }
 
+/** Einen Hinweis in einer Grafik zeigen, z.B. «keine Daten» (leer = ausblenden) */
 function setStatus(id, message) {
   const node = document.getElementById(id);
   node.textContent = message || '';
   node.hidden = !message;
 }
 
-/* ---------- 2) Start und Zustand ---------------------------------- */
+/* ---------- 2) Start: was beim Öffnen der Seite passiert ---------- */
 
+// Das Gedächtnis der Seite: Hier steht, welche Daten geladen sind und was
+// gerade ausgewählt ist. Klickt man auf einen Knopf, ändert sich ein Wert
+// hier, und die passende Grafik wird neu gezeichnet.
 const state = {
-  recent: null,          // Map station_no → Datensätze der letzten 365 Tage
-  latest: null,          // jüngster Messtag (YYYY-MM-DD)
-  names: new Map(),      // station_no → { river_name, station_name } (aus den Daten)
-  compareRecords: null,  // Datensätze 2022 und 2026, wie von unload.php geliefert
-  cmp: null,             // Vergleich 2022/2026 bis zum letzten Messtag
-  compare: { parameter: 'WT', smooth: 7 },
-  focus: { hover: null, pinned: null }, // hervorgehobener Fluss
-  zoom: { no: null },
-  ts: { parameter: 'WT', days: '365', hidden: new Set(), records: null, range: null, request: 0 },
+  recent: null,          // die Messwerte der letzten 365 Tage, nach Fluss sortiert
+  latest: null,          // der neuste Messtag
+  names: new Map(),      // Fluss- und Ortsname zu jeder Stationsnummer
+  compareRecords: null,  // alle Messwerte von 2022 und 2026
+  cmp: null,             // der fertige Vergleich 2022 gegen 2026
+  compare: { parameter: 'WT', smooth: 7 }, // «Jahr gegen Jahr»: Temperatur, 7-Tage-Mittel
+  focus: { hover: null, pinned: null }, // welcher Fluss gerade hervorgehoben ist
+  zoom: { no: null },    // welcher Fluss gross angezeigt wird
+  ts: { parameter: 'WT', days: '365', hidden: new Set(), records: null, range: null, request: 0 }, // «Selbst nachschauen»
 };
 
+// Sobald die Seite geladen ist: init() starten.
 document.addEventListener('DOMContentLoaded', init);
 
+/**
+ * Das passiert beim Öffnen der Seite:
+ * 1. Knöpfe bereit machen
+ * 2. Daten holen
+ * 3. Alle Grafiken zeichnen
+ */
 async function init() {
   setupProgress();
   setupFocus();
@@ -273,7 +303,7 @@ async function init() {
   let recent;
   let compare;
   try {
-    // Zwei Abfragen: die letzten 365 Tage (ohne Filter) und die beiden Vergleichsjahre
+    // Zwei Fragen gleichzeitig: die letzten 365 Tage und die Jahre 2022 und 2026.
     [recent, compare] = await Promise.all([unload(), unload({ years: `${YEARS.ref},${YEARS.cur}` })]);
   } catch (err) {
     fatal(err);
@@ -284,6 +314,7 @@ async function init() {
     return;
   }
 
+  // Die Daten ins Gedächtnis der Seite legen.
   state.recent = groupByStation(recent);
   state.latest = d3.max(recent, (r) => r.date);
   for (const r of [...recent, ...compare]) {
@@ -292,6 +323,7 @@ async function init() {
   state.compareRecords = compare;
   state.cmp = buildCompare(compare);
 
+  // Jetzt alle Teile der Seite zeichnen, von oben nach unten.
   renderStripes();
   setupDraw();
   renderStats();
@@ -306,7 +338,7 @@ async function init() {
   setupResize();
 }
 
-/** Wenn gar nichts geladen werden kann: klare Meldung statt leerer Seite. */
+/** Wenn gar nichts geladen werden kann: eine klare Meldung statt einer leeren Seite */
 function fatal(err) {
   showToast(err.message);
   const msg = `Die Daten sind momentan nicht verfügbar: ${err.message}`;
@@ -316,7 +348,10 @@ function fatal(err) {
   }
 }
 
-/** Segmented Control (Radiogruppe) mit Tastatursteuerung */
+/**
+ * Eine Knopfgruppe, bei der immer genau ein Knopf aktiv ist
+ * (z.B. «Temperatur | Wasserstand»). Geht auch mit den Pfeiltasten.
+ */
 function setupSegmented(id, dataKey, onChange) {
   const buttons = [...document.querySelectorAll(`#${id} button`)];
   const select = (btn) => {
@@ -337,28 +372,32 @@ function setupSegmented(id, dataKey, onChange) {
   });
 }
 
-/** Radiogruppe von aussen auf einen Wert setzen (ohne onChange auszulösen) */
+/** In einer Knopfgruppe einen bestimmten Knopf als aktiv markieren */
 function setSegmentedValue(id, dataKey, value) {
   document.querySelectorAll(`#${id} button`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset[dataKey] === String(value))));
 }
 
-/** «Thur – Andelfingen» aus river_name und station_name der Daten */
+/** Der volle Name eines Flusses, z.B. «Thur – Andelfingen» */
 const displayName = (no) => {
   const n = state.names.get(no);
   return n ? `${n.river_name} – ${n.station_name}` : no;
 };
 
-/* ---------- 3) Umformen: Vergleich 2022/2026 ---------------------- */
+/* ---------- 3) 2022 und 2026 vergleichen --------------------------- */
 
 /**
- * Datensätze beider Jahre → Kennzahlen pro Station. Fair verglichen wird
- * immer derselbe Zeitraum: 1. Januar bis zum Stichtag, dem letzten Messtag 2026.
+ * Rechnet für jeden Fluss die wichtigsten Zahlen beider Jahre aus.
+ *
+ * Fair ist der Vergleich nur, wenn beide Jahre gleich lang sind. 2026 ist
+ * noch nicht vorbei. Deshalb zählen wir in beiden Jahren nur vom 1. Januar
+ * bis zum «Stichtag», dem letzten Tag, für den es 2026 schon Daten gibt.
  */
 function buildCompare(records) {
   const byNo = groupByStation(records);
   const curDates = records.filter((r) => r.date.startsWith(String(YEARS.cur))).map((r) => r.date);
   const cutoff = curDates.length ? d3.max(curDates).slice(5) : '12-31';
 
+  // Die Zahlen eines Jahres: Durchschnitt, heisse Tage, Wasserstand, geprüfte Tage.
   const summarize = (recs) => {
     const upTo = recs.filter((r) => r.date.slice(5) <= cutoff);
     const wt = upTo.map((r) => r.water_temperature_c).filter((v) => v != null);
@@ -368,13 +407,13 @@ function buildCompare(records) {
       days_ge_20: wt.filter((v) => v >= 20).length,
       days_ge_25: wt.filter((v) => v >= 25).length,
       w_mean: w.length ? d3.mean(w) : null,
-      // Tage, an denen der Datensatz vom BAFU geprüft ist (validiert/definitiv). Laut Datenvertrag
-      // gilt ein Datensatz nur dann als geprüft, wenn beide Messwerte geprüft sind.
+      // Tage, deren Werte das BAFU schon kontrolliert hat.
       checked: upTo.filter((r) => r.release_state >= 2).length,
       count: upTo.length,
     };
   };
 
+  // Für jeden Fluss: die Werte von 2022 und 2026 und ihre Zahlen.
   const stations = STATIONS.filter((s) => byNo.has(s.no)).map((s) => {
     const recs = byNo.get(s.no);
     const ref = recs.filter((r) => r.date.startsWith(String(YEARS.ref)));
@@ -385,34 +424,44 @@ function buildCompare(records) {
   return { cutoff, stations };
 }
 
+// Kleine Helfer für den Vergleich:
+// - inGroup: nur die Mittelland- oder nur die Alpenflüsse
+// - cutoffLabel: der Stichtag als Text, z.B. «28. September»
+// - delta: der Unterschied 2026 minus 2022
 const inGroup = (key, cmp = state.cmp) => cmp.stations.filter((s) => s.info.group === key);
 const cutoffLabel = (cmp = state.cmp) => fmtDayMonth(parseDate(`${YEARS.cur}-${cmp.cutoff}`));
-/** Kalendertag «MM-DD» → Datum im neutralen Schaltjahr 2000 */
+/**
+ * Ein Tag im Jahr («07-14») als Datum. Wir legen beide Jahre auf dasselbe
+ * Hilfsjahr 2000, damit der 14. Juli 2022 und der 14. Juli 2026 genau
+ * übereinander liegen.
+ */
 const mdDate = (md) => new Date(Date.UTC(2000, Number(md.slice(0, 2)) - 1, Number(md.slice(3, 5))));
 const fmtMd = d3.utcFormat('%m-%d');
 const delta = (s, k) => s.cur.summary[k] - s.ref.summary[k];
 
-/* ---------- 3b) Mitmachen: die Kurve selbst zeichnen -------------- */
+/* ---------- 3b) «Schätz mal!»: die Kurve selbst zeichnen ----------- */
 
 /**
- * «Schätz mal!»: Die Kurve von 2022 ist zu sehen, von 2026 nur der Januar.
- * Wer mag, zeichnet mit Maus oder Finger weiter, wie warm der Fluss 2026 war,
- * und deckt dann die echte Kurve auf. Gezeichnet wird pro Woche ein Punkt.
- * Die Zahlen darunter kommen wie alles andere aus unload.php.
+ * Man sieht die Temperatur von 2022 und den Januar 2026. Den Rest von 2026
+ * zeichnet man selbst mit Maus oder Finger. Dann deckt man die echte Kurve
+ * auf und sieht, wie gut man geschätzt hat.
+ * Gezeichnet wird ein Punkt pro Woche.
  */
 function setupDraw() {
   const ml = inGroup('mittelland');
   if (!ml.length) return;
-  // Der Mittellandfluss mit dem grössten Sprung bei den Tagen über 25 °C
+  // Wir nehmen den Mittellandfluss mit dem grössten Unterschied bei den Tagen über 25 °C.
   const s = [...ml].sort((a, b) => delta(b, 'days_ge_25') - delta(a, 'days_ge_25'))[0];
   const start = new Date(Date.UTC(2000, 1, 1));
   const cutoff = mdDate(state.cmp.cutoff);
   const slots = d3.utcDay.range(start, cutoff, 7);
   if (+slots[slots.length - 1] !== +cutoff) slots.push(cutoff);
 
+  // Was gezeichnet wurde, merken: ein Wert pro Woche, am Anfang alles leer.
   state.draw = { s, start, slots, guess: slots.map(() => null), revealed: false, last: null };
   setSlot('draw-river', state.names.get(s.no).river_name);
 
+  // Die drei Knöpfe: «Auflösen», «Direkt zur Lösung», «Nochmals zeichnen».
   const reveal = document.getElementById('draw-reveal');
   const skip = document.getElementById('draw-skip');
   const reset = document.getElementById('draw-reset');
@@ -427,6 +476,7 @@ function setupDraw() {
   renderDraw();
 }
 
+/** Die Zeichenfläche zeichnen (und nach jedem Strich neu) */
 function renderDraw() {
   const d = state.draw;
   if (!d) return;
@@ -434,12 +484,14 @@ function renderDraw() {
   d3.select(chart).selectAll('svg').remove();
   const width = chart.clientWidth;
   const height = chart.clientHeight;
-  const small = width < 560;
-  const m = { top: 16, right: small ? 14 : 24, bottom: 28, left: small ? 30 : 40 };
+  const small = width < 560; // Handy?
+  const m = { top: 16, right: small ? 14 : 24, bottom: 28, left: small ? 30 : 40 }; // Rand für die Beschriftung
   const innerW = width - m.left - m.right;
   const innerH = height - m.top - m.bottom;
-  if (innerW < 80 || innerH < 80) return;
+  if (innerW < 80 || innerH < 80) return; // noch nicht sichtbar
 
+  // Die Linien von 2022 und 2026 (7-Tage-Mittel) und die Achsen:
+  // x = Datum (links Januar, rechts Stichtag), y = Temperatur (unten 0 °C).
   const cutoff = d.slots[d.slots.length - 1];
   const ref = yearPoints(d.s.ref.records, YEARS.ref, 'WT', 7).filter((p) => p.x <= cutoff);
   const cur = yearPoints(d.s.cur.records, YEARS.cur, 'WT', 7);
@@ -449,6 +501,7 @@ function renderDraw() {
 
   const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
   const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+  // Die hellblaue Fläche, in der man zeichnen darf.
   g.append('rect').attr('class', 'draw__zone').attr('x', x(d.start)).attr('width', innerW - x(d.start)).attr('height', innerH).attr('rx', 10);
   g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
     .call(d3.axisBottom(x).ticks(d3.utcMonth.every(small ? 2 : 1)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')));
@@ -456,22 +509,26 @@ function renderDraw() {
     .call(d3.axisLeft(y).ticks(small ? 4 : 6).tickSize(-innerW).tickFormat((v) => `${fmt0(v)}°`))
     .call((a) => a.selectAll('.tick text').attr('x', -6));
 
+  // Die graue Linie von 2022.
   const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveBasis);
   g.append('path').attr('class', 'draw__ref').attr('d', line(ref));
   const refLast = [...ref].reverse().find((p) => p.value != null);
   if (refLast) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(refLast.x) - 4).attr('y', y(refLast.value) + 18).attr('text-anchor', 'end').text(YEARS.ref);
 
-  // Der Anfang von 2026 ist vorgegeben: bis Ende Januar
+  // Der Januar 2026 ist schon gezeichnet, als Startpunkt.
   const known = cur.filter((p) => p.x == null || p.x < d.start);
   const anchor = [...known].reverse().find((p) => p.value != null);
   g.append('path').attr('class', 'draw__real').attr('d', line(known));
 
+  // Die eigene, orange Linie und der Hinweis «Zeichne hier weiter» mit Stift.
   const guessPath = g.append('path').attr('class', `draw__guess${d.revealed ? ' is-done' : ''}`);
   const hint = g.append('g').attr('class', 'draw__hint-g')
     .attr('transform', `translate(${x(d.start) + 16},${anchor ? y(anchor.value) : innerH / 2})`);
   appendIcon(hint.append('g').attr('class', 'draw__hint-icon').attr('transform', 'translate(13,-17)'), 'pen', 26);
   hint.append('text').attr('class', 'draw__hint').attr('x', 32).attr('y', -12).text(small ? 'Hier weiterzeichnen' : 'Zeichne hier weiter, wie warm es 2026 war');
 
+  // Nach jedem Strich: die eigene Linie neu zeichnen und die Knöpfe anpassen.
+  // «Auflösen» geht erst, wenn mindestens 60 % der Wochen gezeichnet sind.
   const update = () => {
     const pts = [anchor && { x: anchor.x, value: anchor.value }, ...d.slots.map((slot, i) => ({ x: slot, value: d.guess[i] }))].filter(Boolean);
     guessPath.attr('d', d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveMonotoneX)(pts));
@@ -484,6 +541,7 @@ function renderDraw() {
   };
 
   if (d.revealed) {
+    // Aufgelöst: Die echte Linie von 2026 zeichnet sich langsam von links nach rechts.
     const rest = cur.filter((p) => p.x == null || p.x >= d3.utcDay.offset(d.start, -7));
     const real = g.append('path').attr('class', 'draw__real').attr('d', line(rest));
     const length = real.node().getTotalLength();
@@ -495,12 +553,13 @@ function renderDraw() {
     const curLast = [...cur].reverse().find((p) => p.value != null);
     if (curLast) g.append('text').attr('class', 'year-label').attr('x', x(curLast.x) - 4).attr('y', y(curLast.value) - 10).attr('text-anchor', 'end').text(YEARS.cur);
   } else {
-    // Zeichnen: Maus gedrückt halten oder mit dem Finger über die Fläche fahren
+    // Noch nicht aufgelöst: Man zeichnet mit gedrückter Maus oder mit dem Finger.
+    // Wo die Maus ist, wird der Wert für die nächstgelegene Woche gesetzt.
     const setAt = (event) => {
       const [mx, my] = d3.pointer(event, g.node());
       const i = d3.leastIndex(d.slots, (slot) => Math.abs(x(slot) - mx));
       const value = Math.max(0, Math.min(y.domain()[1], y.invert(my)));
-      // Wer schnell zieht, überspringt Wochen: dazwischen gerade verbinden
+      // Wer schnell zieht, überspringt Wochen. Die Lücke füllen wir mit einer geraden Linie.
       if (d.last != null && Math.abs(i - d.last.i) > 1) {
         const [a, b] = d.last.i < i ? [d.last, { i, value }] : [{ i, value }, d.last];
         for (let k = a.i + 1; k < b.i; k++) d.guess[k] = a.value + ((b.value - a.value) * (k - a.i)) / (b.i - a.i);
@@ -518,7 +577,11 @@ function renderDraw() {
   update();
 }
 
-/** Echte Kurve zeigen und sagen, wie gut geschätzt wurde */
+/**
+ * Die echte Kurve zeigen und sagen, wie gut man geschätzt hat:
+ * Wir vergleichen jede gezeichnete Woche mit dem echten Wert und rechnen
+ * aus, wie viele Grad man im Schnitt daneben lag.
+ */
 function revealDraw() {
   const d = state.draw;
   d.revealed = true;
@@ -535,6 +598,7 @@ function revealDraw() {
     ` als ${YEARS.ref} und an `, el('strong', {}, `${fmt0(d.s.cur.summary.days_ge_25)}\u00a0Tagen`),
     ` über 25\u00a0°C warm (${YEARS.ref}: ${fmt0(d.s.ref.summary.days_ge_25)}\u00a0Tage).`,
   ];
+  // Ein Lob je nach Treffsicherheit: unter 1 Grad, unter 2 Grad, mehr.
   let praise = [];
   if (errors.length) {
     const mean = d3.mean(errors);
@@ -544,20 +608,23 @@ function revealDraw() {
   document.getElementById('draw-result').replaceChildren(...praise, ...facts);
 }
 
-/* ---------- 4) Einstieg: Temperatur-Streifen --------------------- */
+/* ---------- 4) Die Grafik ganz oben: zwei Flüsse ------------------ */
 
-/** Kalendertag «MM-DD» → Position im neutralen Schaltjahr 2000 (0 … 365) */
+/** Der wievielte Tag im Jahr ist das? (0 = 1. Januar, 365 = 31. Dezember) */
 const dayIndex = (md) => d3.utcDay.count(new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, Number(md.slice(0, 2)) - 1, Number(md.slice(3, 5)))));
 
-/** Ein kleiner gezeichneter Fisch: Kopf rechts, Schwanz links (Mitte bei 0,0) */
+/** Ein kleiner Fisch, gezeichnet mit einer Linie: Kopf rechts, Schwanz links */
 const FISH_PATH = 'M9 0c-3-4.5-9-5-13-1.2L-8-4v8l4-2.8C0 5 6 4.5 9 0Z';
 
 /**
- * Einstieg: Die Thur fliesst zweimal durchs Bild, oben 2022, unten 2026.
- * Die Farbe des Flusses ist die Wassertemperatur, Tag für Tag (dieselbe
- * Skala wie bei den Flussbändern). Eine Sonne markiert den heissesten Tag,
- * ein paar Fische schwimmen mit. Darunter stehen die wichtigsten Zahlen.
- * Verglichen wird wie überall vom 1. Januar bis zum Stichtag.
+ * Die Grafik ganz oben: Die Thur fliesst zweimal durchs Bild,
+ * oben 2022, unten 2026.
+ *
+ * - Die Farbe zeigt die Wassertemperatur, Tag für Tag:
+ *   blau = kalt, weiss = mittel, rot = warm.
+ * - Die Sonne zeigt den heissesten Tag.
+ * - Die Fische sind Dekoration. Sie schwimmen mit dem Fluss.
+ * - Fährt man mit der Maus darüber, sieht man Datum und Temperatur.
  */
 function renderStripes() {
   const s = state.cmp.stations.find((c) => c.no === HERO_STATION) || state.cmp.stations[0];
@@ -565,6 +632,7 @@ function renderStripes() {
   const rowsBox = document.getElementById('stripes-rows');
   if (!s) { rowsBox.replaceChildren(); return; }
 
+  // Die Beschriftung unter der Grafik.
   const names = state.names.get(s.no);
   const cutoff = state.cmp.cutoff;
   setSlot('ramp-min', '0 °C');
@@ -574,24 +642,28 @@ function renderStripes() {
 
   const width = rowsBox.clientWidth;
   if (width < 100) return; // noch nicht sichtbar
-  const small = width < 560;
+  const small = width < 560; // Handy?
   const height = small ? 84 : 112;
+  // Hat jemand am Computer «Bewegung reduzieren» eingestellt? Dann keine Fische.
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Umrechnung: Tag im Jahr → Position von links nach rechts.
   const x = d3.scaleLinear().domain([0, 366]).range([0, width]);
   const tooltip = getTooltip(figure);
 
+  // Zwei Flüsse zeichnen: einen für 2022, einen für 2026.
   const rows = [[YEARS.ref, s.ref.records, 0], [YEARS.cur, s.cur.records, Math.PI]].map(([year, records, phase]) => {
     const days = records.filter((r) => r.water_temperature_c != null);
-    const thick = height * 0.34;
-    const mid = height * 0.62;
-    // Der Fluss schlängelt sich in zweieinhalb Bögen durchs Bild
+    const thick = height * 0.34; // wie breit der Fluss ist
+    const mid = height * 0.62;   // wo seine Mitte liegt
+    // Der Fluss schlängelt sich in Wellen durchs Bild (eine Sinuskurve).
     const cy = (px) => mid + height * 0.1 * Math.sin((px / width) * Math.PI * 5 + phase);
-    const end = x(d3.max(days, (r) => dayIndex(r.date.slice(5))) + 1);
+    const end = x(d3.max(days, (r) => dayIndex(r.date.slice(5))) + 1); // 2026 endet beim letzten Messtag
     const xs = [...d3.range(0, end, 4), end];
     const id = `hero-${year}`;
 
     const svg = d3.create('svg').attr('class', 'stripes__svg').attr('width', width).attr('height', height)
       .attr('role', 'img').attr('aria-label', `Wassertemperatur ${year}, ${names.river_name}: ${days.length} Tage`);
+    // Der Farbverlauf: Für jeden Tag ein Farbpunkt, je nach Temperatur.
     const defs = svg.append('defs');
     defs.append('linearGradient').attr('id', `${id}-color`).attr('gradientUnits', 'userSpaceOnUse')
       .attr('x1', 0).attr('x2', width).attr('y1', 0).attr('y2', 0)
@@ -599,13 +671,14 @@ function renderStripes() {
       .attr('offset', (r) => (dayIndex(r.date.slice(5)) + 0.5) / 366)
       .attr('stop-color', (r) => tempColor(r.water_temperature_c));
 
+    // Den Fluss selbst zeichnen und mit dem Farbverlauf füllen.
     const river = d3.area().x((p) => p).y0((p) => cy(p) - thick / 2).y1((p) => cy(p) + thick / 2).curve(d3.curveBasis);
     svg.append('path').attr('class', 'hero-river').attr('d', river(xs)).attr('fill', `url(#${id}-color)`);
     // Glanz auf dem Wasser
     svg.append('path').attr('class', 'hero-river__shine')
       .attr('d', d3.line().x((p) => p).y((p) => cy(p) - thick * 0.2).curve(d3.curveBasis)(xs.filter((p) => p < end - 12)));
 
-    // Fische schwimmen der Mitte des Flusses entlang
+    // Drei Fische schwimmen der Mitte des Flusses entlang, versetzt gestartet.
     if (!reduceMotion) {
       defs.append('path').attr('id', `${id}-path`).attr('d', d3.line().x((p) => p).y(cy).curve(d3.curveBasis)(xs));
       const duration = small ? 16 : 26;
@@ -617,11 +690,11 @@ function renderStripes() {
       });
     }
 
-    // Sonne über dem heissesten Tag bis zum Stichtag
+    // Die Sonne über dem heissesten Tag, mit der Temperatur daneben.
     const hot = hottestDay(days.filter((r) => r.date.slice(5) <= cutoff));
     if (hot) {
       const hx = x(dayIndex(hot.date.slice(5)) + 0.5);
-      const right = hx > width - (small ? 150 : 190); // Text passt rechts nicht mehr hin → links vom Symbol
+      const right = hx > width - (small ? 150 : 190); // Kein Platz mehr rechts? Dann steht der Text links.
       const sun = svg.append('g').attr('class', 'hero-sun')
         .attr('transform', `translate(${hx},${Math.max(13, cy(hx) - thick / 2 - 22)})`);
       appendIcon(sun, 'sun', 24);
@@ -629,7 +702,7 @@ function renderStripes() {
         .text(`Heissester Tag: ${fmtTemp(hot.water_temperature_c)}`);
     }
 
-    // Hover: Tag und Temperatur, ein Punkt auf dem Fluss
+    // Mit der Maus darüber: Ein Punkt erscheint, dazu Datum und Temperatur.
     const dot = svg.append('circle').attr('class', 'hero-dot').attr('r', 5).style('display', 'none');
     const byDay = new Map(days.map((r) => [dayIndex(r.date.slice(5)), r]));
     svg.on('pointermove', (event) => {
@@ -652,11 +725,11 @@ function renderStripes() {
   rowsBox.replaceChildren(...rows);
   renderHeroFacts(s);
 
-  // Aufbau-Animation starten, sobald die Flüsse im DOM sind
+  // Die Flüsse von links nach rechts «einfliessen» lassen.
   requestAnimationFrame(() => requestAnimationFrame(() => figure.classList.add('is-drawn')));
 }
 
-/** Eine Zeile unter den Flüssen: Tage über 20 °C, beide Jahre bis zum Stichtag */
+/** Der Satz unter den Flüssen: an wie vielen Tagen über 20 °C, 2026 und 2022 */
 function renderHeroFacts(s) {
   const box = document.getElementById('stripes-facts');
   const cur = s.cur.summary.days_ge_20;
@@ -666,8 +739,13 @@ function renderHeroFacts(s) {
       ` über 20\u00a0°C warm, ${YEARS.ref} an ${fmt0(ref)}.`));
 }
 
-/* ---------- 5) Auf einen Blick: Kennzahlen ----------------------- */
+/* ---------- 5) Die drei grossen Zahlen ----------------------------- */
 
+/**
+ * Drei Karten mit je einer grossen Zahl: heisse Tage, wärmer, tiefer.
+ * Für jede Karte nehmen wir den Mittellandfluss mit dem deutlichsten
+ * Unterschied, und zwar drei verschiedene Flüsse.
+ */
 function renderStats() {
   const box = document.getElementById('stats');
   const ml = inGroup('mittelland');
@@ -675,7 +753,7 @@ function renderStats() {
   const cutoff = cutoffLabel();
   setSlot('stats-lead', `Limmat, Thur und Rhein, jeweils vom 1. Januar bis ${cutoff}. Links ${YEARS.cur}, darunter der Wert von ${YEARS.ref}.`);
 
-  // Pro Kennzahl der Fluss mit dem deutlichsten Unterschied – möglichst drei verschiedene Flüsse
+  // Den passenden Fluss aussuchen, ohne einen Fluss zweimal zu nehmen.
   const used = new Set();
   const pick = (score) => {
     const ranked = [...ml].sort((x, y) => score(y) - score(x));
@@ -687,6 +765,7 @@ function renderStats() {
   const warmest = pick((s) => delta(s, 'wt_mean'));
   const lowest = pick((s) => -delta(s, 'w_mean'));
 
+  // Eine Karte: Symbol, Fluss, grosse Zahl, Erklärung, Vergleich mit 2022.
   const tile = (s, symbol, number, unit, label, ref) => el('article', { class: 'stat focusable', 'data-station': s.no, 'data-pin': '' },
     icon(symbol, 'icon stat__icon'),
     el('div', { class: 'stat__river' }, keySwatch(s.no), displayName(s.no)),
@@ -708,8 +787,12 @@ function renderStats() {
   applyFocus();
 }
 
-/* ---------- 6) Stationen ----------------------------------------- */
+/* ---------- 6) Die sechs Messstellen ------------------------------- */
 
+/**
+ * Die Liste der sechs Flüsse, aufgeteilt in Mittelland und Alpen.
+ * Pro Fluss: Name, ein Satz dazu, eine kleine Kurve und die neusten Werte.
+ */
 function renderStationGroups() {
   const box = document.getElementById('station-groups');
   box.replaceChildren(...GROUPS.map((group) => el('div', { class: 'station-group' },
@@ -717,6 +800,7 @@ function renderStationGroups() {
     el('ul', { class: 'station-list' }, STATIONS.filter((s) => s.group === group.key && state.names.has(s.no)).map((s) => {
       const n = state.names.get(s.no);
       const recent = state.recent.get(s.no) || [];
+      // Der neuste Tag mit einem Wert.
       const last = [...recent].reverse().find((r) => r.water_temperature_c != null || r.water_level_deviation_cm != null);
       return el('li', { class: 'station focusable', 'data-station': s.no, 'data-pin': '' },
         el('div', {},
@@ -734,7 +818,7 @@ function renderStationGroups() {
   applyFocus();
 }
 
-/** Mini-Verlauf der Wassertemperatur (2022 grau, 2026 in Stationsfarbe) */
+/** Die kleinen Kurven in der Liste: Temperatur 2022 grau, 2026 in der Farbe des Flusses */
 function drawSparklines() {
   if (!state.cmp) return;
   document.querySelectorAll('[data-spark]').forEach((node) => {
@@ -754,13 +838,16 @@ function drawSparklines() {
   });
 }
 
-/* ---------- 7) Jahr gegen Jahr ------------------------------------ */
+/* ---------- 7) Jahr gegen Jahr: eine Grafik pro Fluss -------------- */
 
 /**
- * Datensätze eines Jahres → Punkte für die Grafik. Die x-Position ist der
- * Kalendertag in einem neutralen Schaltjahr (2000), damit beide Jahre
- * übereinanderliegen. Optional gleitendes Mittel über die letzten 7 Tage
- * (mindestens 5 Werte im Fenster, sonst Lücke). Nichts wird aufgefüllt.
+ * Macht aus den Messwerten eines Jahres Punkte für eine Linie.
+ *
+ * - Beide Jahre kommen auf dasselbe Hilfsjahr, damit sie übereinander liegen.
+ * - «7-Tage-Mittel»: Jeder Punkt ist der Durchschnitt dieses Tages und der
+ *   sechs Tage davor. Das macht die Linie ruhiger. Fehlen zu viele Tage,
+ *   bleibt eine Lücke.
+ * - Fehlt ein Tag, reisst die Linie ab. Wir erfinden keine Werte.
  */
 function yearPoints(records, year, param, smooth) {
   const field = FIELD[param];
@@ -778,13 +865,13 @@ function yearPoints(records, year, param, smooth) {
   });
   const out = [];
   pts.forEach((p, i) => {
-    if (i > 0 && p.real - pts[i - 1].real > day) out.push({ x: p.x, value: null }); // Lücke
+    if (i > 0 && p.real - pts[i - 1].real > day) out.push({ x: p.x, value: null }); // hier fehlt ein Tag: Lücke
     out.push(p);
   });
   return out;
 }
 
-/** Linien beider Jahre für alle Stationen (aktuelle Messgrösse und Glättung) */
+/** Die Linien 2022 und 2026 für alle Flüsse, je nach gewählten Knöpfen */
 function cmpSeries() {
   const { parameter, smooth } = state.compare;
   return state.cmp.stations.map((s) => ({
@@ -794,14 +881,17 @@ function cmpSeries() {
   }));
 }
 
-/** Wertebereich der Linien, immer inkl. 0 (keine abgeschnittene Achse) */
+/**
+ * Wie hoch und tief muss die Achse gehen? Immer inklusive 0, damit kleine
+ * Unterschiede nicht künstlich gross aussehen.
+ */
 function seriesExtent(series) {
   const values = series.flatMap((s) => [...s.refPts, ...s.curPts].map((p) => p.value)).filter((v) => v != null);
   const [lo, hi] = d3.extent(values);
   return [Math.min(0, lo ?? 0), Math.max(0, hi ?? 0)];
 }
 
-/** Messgrösse / Glättung ändern – gilt für die Übersicht und die vergrösserte Ansicht */
+/** Ein Knopf wurde gedrückt (z.B. «Wasserstand»): alle Grafiken neu zeichnen */
 function setCompareOption(key, value) {
   state.compare[key] = value;
   for (const id of ['cmp-param-switch', 'zoom-param-switch']) setSegmentedValue(id, 'param', state.compare.parameter);
@@ -810,7 +900,7 @@ function setCompareOption(key, value) {
   renderZoom();
 }
 
-/** Legende: Linien und Bedeutung der eingefärbten Fläche */
+/** Die Legende: grau = 2022, weiss = 2026, rot = 2026 wärmer, blau = 2026 kühler */
 function diffLegend() {
   const isW = state.compare.parameter === 'W';
   return [
@@ -821,6 +911,10 @@ function diffLegend() {
   ];
 }
 
+/**
+ * «Jahr gegen Jahr»: sechs kleine Grafiken, eine pro Fluss.
+ * Alle haben dieselbe Skala, damit man sie fair vergleichen kann.
+ */
 function renderMultiples() {
   if (!state.cmp) return;
   const { parameter, smooth } = state.compare;
@@ -837,7 +931,7 @@ function renderMultiples() {
     (smooth > 1 ? ' Das 7-Tage-Mittel glättet kurze Schwankungen; im Tooltip stehen die geglätteten Werte.' : '');
 
   const series = cmpSeries();
-  const [yMin, yMax] = seriesExtent(series); // gemeinsame Skala → ehrlicher Vergleich
+  const [yMin, yMax] = seriesExtent(series); // alle Grafiken gleich hoch skaliert: fairer Vergleich
 
   container.replaceChildren(...GROUPS.map((group) => el('div', { class: 'multiples__group' },
     el('p', { class: 'multiples__group-title' }, group.title),
@@ -861,7 +955,8 @@ function renderMultiples() {
 }
 
 /**
- * Farbe der Wassertemperatur für die Einstiegsgrafik: blau = kalt, rot = warm.
+ * Die Farben für die Temperatur in der Grafik ganz oben:
+ * 0 °C dunkelblau, 8 °C blau, 16 °C fast weiss, ab 24 °C rot.
  */
 const tempColor = d3.scaleLinear()
   .domain([0, 8, 16, 24])
@@ -877,9 +972,12 @@ const hottestDay = (records) => d3.greatest(records.filter((r) => r.water_temper
 let clipId = 0;
 
 /**
- * Grafik eines Flusses: 2022 (grau), 2026 (weiss) und die Fläche dazwischen.
- * Warm eingefärbt, wo 2026 die Hypothese stützt (wärmer bzw. tiefer), kühl,
- * wo 2026 dagegen spricht. Technik: «Difference chart» mit zwei Clip-Pfaden.
+ * Die Grafik für einen Fluss: 2022 als graue Linie, 2026 als weisse Linie.
+ * Die Fläche dazwischen ist eingefärbt:
+ * - rot, wo 2026 wärmer war (bzw. tiefer lag): Das stützt unsere These.
+ * - blau, wo es umgekehrt war.
+ * Dafür zeichnen wir die Fläche zweimal und schneiden je den oberen bzw.
+ * den unteren Teil weg (mit sogenannten «Clip-Pfaden», wie mit einer Schere).
  */
 function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
   d3.select(chart).selectAll('svg').remove();
@@ -888,7 +986,7 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
   const m = large ? { top: 14, right: 44, bottom: 28, left: 46 } : { top: 10, right: 34, bottom: 24, left: 36 };
   const innerW = width - m.left - m.right;
   const innerH = height - m.top - m.bottom;
-  if (innerW < 50 || innerH < 50) return; // Grafik (noch) nicht sichtbar
+  if (innerW < 50 || innerH < 50) return; // noch nicht sichtbar
 
   const x = d3.scaleUtc().domain([new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, 11, 31))]).range([0, innerW]);
   const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([innerH, 0]);
@@ -904,12 +1002,12 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
     .call((a) => a.selectAll('.tick text').attr('x', -6));
   g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
 
-  // Stichtag: bis hierhin wird verglichen
+  // Die gepunktete Linie beim Stichtag: Bis hierhin wird verglichen.
   const [mm, dd] = state.cmp.cutoff.split('-').map(Number);
   const cx = x(new Date(Date.UTC(2000, mm - 1, dd)));
   g.append('line').attr('class', 'cutoff-line').attr('x1', cx).attr('x2', cx).attr('y1', 0).attr('y2', innerH);
 
-  // Differenzfläche: pro Tag des aktuellen Jahres der Wert von 2022 am selben Kalendertag
+  // Für jeden Tag 2026 den Wert von 2022 am selben Datum danebenlegen.
   const refByMd = new Map(s.refPts.filter((p) => p.value != null).map((p) => [p.md, p.value]));
   const joined = s.curPts.map((p) => ({ x: p.x, cur: p.value, ref: p.value == null ? null : refByMd.get(p.md) ?? null }));
   const id = ++clipId;
@@ -920,31 +1018,31 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
     .attr('d', d3.area().defined((d) => d.cur != null).x((d) => x(d.x)).y0(innerH).y1((d) => y(d.cur))(joined));
   const between = d3.area().defined((d) => d.cur != null && d.ref != null)
     .x((d) => x(d.x)).y0((d) => y(d.ref)).y1((d) => y(d.cur))(joined);
-  // Unterhalb der 2026-Linie liegt 2022 tiefer → 2026 höher
+  // Teil unter der weissen Linie: 2026 war höher als 2022.
   g.append('path').attr('class', isW ? 'diff--cool' : 'diff--warm').attr('clip-path', `url(#clip-below-${id})`).attr('d', between);
-  // Oberhalb der 2026-Linie liegt 2022 höher → 2026 tiefer
+  // Teil über der weissen Linie: 2026 war tiefer als 2022.
   g.append('path').attr('class', isW ? 'diff--warm' : 'diff--cool').attr('clip-path', `url(#clip-above-${id})`).attr('d', between);
 
   const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value));
   g.append('path').attr('class', 'line--ref').attr('d', line(s.refPts));
   g.append('path').attr('class', 'line--cur').attr('d', line(s.curPts));
 
-  // Direkte Beschriftung am Linienende
+  // Die Jahreszahl direkt ans Ende jeder Linie schreiben (statt einer Legende).
   const lastOf = (pts) => [...pts].reverse().find((p) => p.value != null);
   const lr = lastOf(s.refPts);
   const lc = lastOf(s.curPts);
   if (lr) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(lr.x) + 4).attr('y', y(lr.value)).attr('dy', '0.35em').text(YEARS.ref);
   if (lc) g.append('text').attr('class', 'year-label').attr('x', x(lc.x) + 4).attr('y', y(lc.value)).attr('dy', '0.35em').text(YEARS.cur);
 
-  // Crosshair über alle Kalendertage mit mindestens einem Wert
+  // Mit der Maus darüber: Eine senkrechte Linie zeigt den Tag, ein Fenster die Werte.
   const refBy = new Map(s.refPts.filter((p) => p.value != null).map((p) => [+p.x, p]));
   const curBy = new Map(s.curPts.filter((p) => p.value != null).map((p) => [+p.x, p]));
   const days = [...new Set([...refBy.keys(), ...curBy.keys()])].sort((a, b) => a - b);
-  const shown = (v) => roundShown(v, isW ? 0 : 1); // Differenz aus angezeigten Werten
+  const shown = (v) => roundShown(v, isW ? 0 : 1); // so gerundet wie angezeigt, damit die Differenz aufgeht
 
   attachCrosshair({
     chart, g, innerW, innerH, margin: m,
-    dockable: false, // Werte immer als schwebendes Fenster im Vordergrund – nichts darunter verschiebt sich
+    dockable: false, // das Werte-Fenster schwebt über der Grafik und verschiebt nichts
     positions: days.map((d) => x(d)),
     render(i, hover) {
       const d = days[i];
@@ -961,7 +1059,7 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
       return el('div', {},
         el('div', { class: 'tooltip__date' }, `${state.names.get(s.no).river_name}, ${fmtDayMonth(new Date(d))}`),
         row(String(YEARS.ref), 'var(--year-ref)', pr),
-        row(String(YEARS.cur), 'var(--bg)', pc), // Tooltip ist hell → dunkler Schlüssel
+        row(String(YEARS.cur), 'var(--bg)', pc), // dunkler Punkt, weil das Fenster hell ist
         diff != null ? el('div', { class: 'tooltip__row' }, el('span', {}), el('span', { class: 'tooltip__name' }, 'Differenz'),
           el('span', { class: 'tooltip__value' }, isW ? fmtCm(diff) : `${fmtSigned(diff, 1)} °C`)) : null);
     },
@@ -969,7 +1067,7 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
   });
 }
 
-/* ----- Vergrösserte Ansicht (Dialog + Vollbild) ----- */
+/* ----- Die grosse Ansicht eines Flusses («Gross ↗», auch als Vollbild) ----- */
 
 const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
 
@@ -981,13 +1079,13 @@ function setupZoom() {
   document.getElementById('zoom-close').addEventListener('click', () => dialog.close());
   document.getElementById('zoom-prev').addEventListener('click', () => stepZoom(-1));
   document.getElementById('zoom-next').addEventListener('click', () => stepZoom(1));
-  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // Klick daneben schliesst
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // Klick daneben schliesst das Fenster
   dialog.addEventListener('close', () => {
     if (fullscreenElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     state.zoom.no = null;
   });
 
-  // Vollbild nur anbieten, wo der Browser es für Elemente unterstützt (z.B. nicht auf dem iPhone)
+  // Den Knopf «Vollbild» nur zeigen, wenn der Browser das kann (das iPhone kann es nicht).
   const canFullscreen = Boolean(inner.requestFullscreen || inner.webkitRequestFullscreen)
     && (document.fullscreenEnabled || document.webkitFullscreenEnabled);
   fsBtn.hidden = !canFullscreen;
@@ -1018,7 +1116,7 @@ function stepZoom(dir) {
   openZoom(order[(i + dir + order.length) % order.length]);
 }
 
-/** Grosse Grafik eines Flusses – mit eigener, an diesen Fluss angepasster Skala */
+/** Die grosse Grafik eines Flusses, mit einer Skala nur für diesen Fluss */
 function renderZoom() {
   if (!state.zoom.no || !state.cmp) return;
   const s = cmpSeries().find((c) => c.no === state.zoom.no);
@@ -1041,13 +1139,18 @@ function renderZoom() {
   drawMultiple(document.getElementById('zoom-chart'), s, { yMin, yMax, isW, f, large: true });
 }
 
-/* ---------- 8) Urteil -------------------------------------------- */
+/* ---------- 8) Das Urteil: Stimmt die These? ---------------------- */
 
-// Entschieden wird mit den angezeigten Werten: «+0.0 °C» gilt nicht als wärmer
+// War ein Fluss 2026 wärmer bzw. tiefer? Wir entscheiden mit den angezeigten,
+// gerundeten Zahlen. «+0.0 °C» zählt also nicht als wärmer.
 const isWarmer = (s) => roundShown(delta(s, 'wt_mean'), 1) > 0;
 const isLower = (s) => roundShown(delta(s, 'w_mean')) < 0;
 
-/** Ja, Teilweise oder Nein – mit dem Satz, der es begründet */
+/**
+ * Das Urteil: «Ja», wenn alle drei Mittellandflüsse wärmer UND tiefer waren.
+ * «Teilweise», wenn wenigstens etwas davon zutrifft. Sonst «Nein».
+ * Dazu ein Satz, der das Urteil begründet.
+ */
 function verdictOf(cmp) {
   const ml = inGroup('mittelland', cmp);
   const cutoff = cutoffLabel(cmp);
@@ -1064,7 +1167,7 @@ function verdictOf(cmp) {
     lead: `Keiner der Mittelland-Flüsse war ${YEARS.cur} bis ${cutoff} wärmer und tiefer als ${YEARS.ref}.` };
 }
 
-/** Urteil: verglichen wird vom 1. Januar bis zum letzten Messtag */
+/** Das Urteil anzeigen: das grosse Wort und die Tabelle mit allen sechs Flüssen */
 function renderVerdict(cmp = state.cmp) {
   const box = document.getElementById('verdict');
   const ml = inGroup('mittelland', cmp);
@@ -1076,7 +1179,8 @@ function renderVerdict(cmp = state.cmp) {
   const { word, cls, lead } = verdictOf(cmp);
 
   const pct = (s) => (s.cur.summary.count ? `${fmt0((s.cur.summary.checked / s.cur.summary.count) * 100)} %` : '–');
-  // Gefülltes Quadrat = erfüllt, leeres = nicht erfüllt; der Text daneben sagt dasselbe (nie nur Farbe)
+  // Ein voller Kreis heisst «ja», ein leerer «nein». Daneben steht es auch als Wort,
+  // damit es nicht nur an der Farbe hängt (wichtig z.B. bei Farbenblindheit).
   const cell = (ok, yes, no, value) => el('td', {}, el('span', { class: 'cell' },
     el('span', { class: `sq${ok ? ' is-yes' : ''}`, 'aria-hidden': 'true' }), el('b', {}, ok ? yes : no), el('small', {}, value)));
   const row = (s, control) => el('tr', { class: `focusable${control ? ' is-control' : ''}`, 'data-station': s.no, 'data-pin': '' },
@@ -1109,8 +1213,9 @@ function renderVerdict(cmp = state.cmp) {
 /* ----- Zuerst tippen, dann das Urteil ----- */
 
 /**
- * Bevor das Urteil erscheint, gibt man einen Tipp ab: Ja, Teilweise oder
- * Nein. Wer nicht tippen mag, kommt über «Ohne Tipp zum Ergebnis» weiter.
+ * Bevor man das Urteil sieht, tippt man selbst: Ja, Teilweise oder Nein.
+ * Danach erscheint das echte Urteil, und die Seite sagt, ob der Tipp stimmte.
+ * Wer nicht tippen mag, klickt auf «Ohne Tipp zum Ergebnis».
  */
 function setupTip() {
   const tip = document.getElementById('verdict-tip');
@@ -1134,12 +1239,17 @@ function setupTip() {
 /* ----- Einen Fluss auf der ganzen Seite hervorheben ----- */
 
 /**
- * Alles, was zu einer Station gehört, trägt data-station: Jahresvergleich,
- * Kennzahl, Messstelle, Zeile im Urteil, Linie und Knopf im Explorer.
- * Maus darüber hebt den Fluss überall hervor, die anderen werden blass.
- * Ein Klick hält die Auswahl fest, bis man erneut klickt oder Esc drückt.
+ * Fährt man mit der Maus über einen Fluss, wird er auf der ganzen Seite
+ * hervorgehoben, und alle anderen Flüsse werden blass: in den Zahlen, in der
+ * Liste, in den Grafiken und im Urteil.
+ * Ein Klick hält die Hervorhebung fest. Ein zweiter Klick oder die Taste Esc
+ * hebt sie wieder auf.
+ *
+ * Wie das geht: Alles, was zu einem Fluss gehört, ist im HTML mit seiner
+ * Stationsnummer markiert (data-station="2044").
  */
 function setupFocus() {
+  // Maus über etwas Markiertem: diesen Fluss hervorheben.
   document.addEventListener('pointerover', (event) => {
     if (event.pointerType !== 'mouse') return;
     const target = event.target.closest('.focusable[data-station]');
@@ -1149,6 +1259,7 @@ function setupFocus() {
       applyFocus();
     }
   });
+  // Klick: festhalten oder loslassen.
   document.addEventListener('click', (event) => {
     const target = event.target.closest('.focusable[data-pin]');
     if (target && !event.target.closest('a, input')) togglePin(target.dataset.station);
@@ -1159,11 +1270,16 @@ function setupFocus() {
   document.getElementById('focus-pill').addEventListener('click', () => togglePin(null));
 }
 
+/** Einen Fluss festhalten, oder loslassen, wenn er schon festgehalten ist */
 function togglePin(no) {
   state.focus.pinned = no === state.focus.pinned ? null : no;
   applyFocus();
 }
 
+/**
+ * Die Hervorhebung anzeigen: Alles vom gewählten Fluss bleibt kräftig,
+ * alles andere wird blass. Unten erscheint ein Knopf zum Aufheben.
+ */
 function applyFocus() {
   const active = state.focus.hover ?? state.focus.pinned;
   document.querySelectorAll('[data-station]').forEach((node) => {
@@ -1180,7 +1296,7 @@ function applyFocus() {
   }
 }
 
-/** Methodik: Angaben aus den geladenen Daten */
+/** Bei «Daten und Methode»: Datenstand und Zeitraum aus den Daten eintragen */
 function renderFacts() {
   setSlot('data-stand', fmtDotted(parseDate(state.latest)));
   setSlot('fact-range', `1. Januar 2020 bis ${longDate(state.latest)}`);
@@ -1189,12 +1305,12 @@ function renderFacts() {
   if (total) setSlot('fact-checked', `${fmt0((checked / total) * 100)} % der Tage vollständig vom BAFU geprüft`);
 }
 
-/* ----- Methode: der Datenfluss zum Anklicken ----- */
+/* ----- Daten und Methode: der Weg der Daten zum Anklicken ----- */
 
 /**
- * Sechs Schritte von der BAFU-API bis zur Grafik. Der gewählte Schritt ist
- * orange, darunter steht, was dort passiert. Die Beispiele sind echte Werte
- * aus den Daten, die diese Seite gerade von unload.php geladen hat.
+ * Die sechs Schritte vom BAFU bis zur Grafik. Klickt man einen an, wird er
+ * orange, und darunter steht, was in diesem Schritt passiert.
+ * Die Beispiele sind echte Werte, die diese Seite gerade geladen hat.
  */
 const METHOD_STEPS = {
   api: {
@@ -1252,17 +1368,19 @@ const METHOD_STEPS = {
   },
 };
 
-/** Der jüngste Datensatz (aus den letzten 365 Tagen), der eine Bedingung erfüllt */
+/** Der neuste Messwert (für die Beispiele oben) */
 function latestRecord(test) {
   const all = [...state.recent.values()].flat().filter(test);
   return d3.greatest(all, (r) => r.date);
 }
 
+/** Wie viele Datensätze hat diese Seite insgesamt geladen? */
 function loadedRecordCount() {
   const recent = d3.sum([...state.recent.values()], (list) => list.length);
   return recent + state.compareRecords.length + (state.ts.records?.length ?? 0);
 }
 
+/** Die sechs Schritte anklickbar machen (auch mit den Pfeiltasten) */
 function setupMethod() {
   const tabs = [...document.querySelectorAll('#pipeline .pipeline__step')];
   const select = (tab, focus = false) => {
@@ -1292,9 +1410,9 @@ function setupMethod() {
   select(tabs[0]);
 }
 
-/* ---------- 9) Explorer: Zeitverlauf aller Flüsse ----------------- */
+/* ---------- 9) Selbst nachschauen: alle Daten seit 2020 ----------- */
 
-/** Legende = Filter: Chips zum Ein- und Ausblenden der Flüsse */
+/** Die Knöpfe mit den Flussnamen: Ein Klick blendet einen Fluss ein oder aus */
 function renderLegend() {
   const legend = document.getElementById('ts-legend');
   const chips = STATIONS.filter((s) => state.names.has(s.no)).map((s) => {
@@ -1304,7 +1422,7 @@ function renderLegend() {
       const hidden = state.ts.hidden;
       hidden.has(s.no) ? hidden.delete(s.no) : hidden.add(s.no);
       chip.setAttribute('aria-pressed', String(!hidden.has(s.no)));
-      loadTimeseries(); // Filter → neue Abfrage an unload.php
+      loadTimeseries(); // die passenden Daten neu holen
     });
     return chip;
   });
@@ -1317,7 +1435,10 @@ function renderLegend() {
   legend.replaceChildren(...chips, all);
 }
 
-/** Holt die Tagesmittel für Auswahl, Messgrösse und Zeitraum aus unload.php */
+/**
+ * Holt genau die Daten, die gerade ausgewählt sind: welche Flüsse,
+ * Temperatur oder Wasserstand, welcher Zeitraum.
+ */
 async function loadTimeseries() {
   const ts = state.ts;
   if (!state.latest) return;
@@ -1336,10 +1457,10 @@ async function loadTimeseries() {
   const from = ts.days === 'all' ? null : fmtIsoDate(d3.utcDay.offset(parseDate(to), -(Number(ts.days) - 1)));
 
   const request = ++ts.request;
-  chart.classList.add('is-loading'); // alte Grafik bleibt sichtbar, bis neue Daten da sind
+  chart.classList.add('is-loading'); // die alte Grafik bleibt blass sichtbar, bis die neue da ist
   try {
     const records = await unload({ stations: visible.map((s) => s.no).join(','), parameter: ts.parameter, from, to });
-    if (request !== ts.request) return; // inzwischen neuere Anfrage gestartet
+    if (request !== ts.request) return; // inzwischen wurde schon wieder etwas anderes gewählt
     ts.records = records;
     ts.range = { from: from ?? d3.min(records, (r) => r.date), to };
     setStatus('ts-status', records.length ? '' : 'Für diese Auswahl sind keine Messwerte gespeichert.');
@@ -1353,7 +1474,7 @@ async function loadTimeseries() {
   }
 }
 
-/** Datensätze → Linien pro Station. Fehlende Tage werden als Lücke eingefügt, nicht aufgefüllt. */
+/** Aus den Daten eine Linie pro Fluss machen. Fehlt ein Tag, bleibt eine Lücke. */
 function toSeries(records, parameter) {
   const field = FIELD[parameter];
   const byNo = groupByStation(records);
@@ -1402,7 +1523,7 @@ function renderTimeseries() {
   const from = parseDate(ts.range.from);
   const to = parseDate(ts.range.to);
   const x = d3.scaleUtc().domain([from, to]).range([0, innerW]);
-  // Achse inkl. 0 (keine abgeschnittene Achse); beim Wasserstand ist 0 = mittlerer Pegel
+  // Die Achse beginnt immer bei 0. Beim Wasserstand heisst 0: genau durchschnittlich.
   const [lo, hi] = d3.extent(allValues);
   const y = d3.scaleLinear().domain([Math.min(0, lo), Math.max(0, hi)]).nice().range([innerH, 0]);
 
@@ -1433,7 +1554,7 @@ function renderTimeseries() {
   const lines = g.append('g');
   for (const s of series) {
     lines.append('path').attr('class', 'series-line').attr('data-station', s.no).style('stroke', colorOf(s.no)).attr('d', line(s.points));
-    if (span <= 31) { // bei kurzen Zeiträumen einzelne Tage als Punkte zeigen
+    if (span <= 31) { // bei kurzen Zeiträumen jeden Tag als Punkt zeigen
       lines.selectAll(null).data(s.points.filter((p) => p.value != null)).join('circle')
         .attr('class', 'series-dot').attr('r', 3.5).style('fill', colorOf(s.no))
         .attr('cx', (p) => x(p.date)).attr('cy', (p) => y(p.value));
@@ -1466,7 +1587,7 @@ function renderTimeseries() {
   applyFocus();
 }
 
-/** Achsenbeschriftung abhängig von der Länge des Zeitraums */
+/** Wie das Datum unter der Grafik steht: «3. Juli», «Jul» oder «2024», je nach Zeitraum */
 function timeTickFormat(spanDays) {
   const day = locale.utcFormat('%-d. %b');
   const month = locale.utcFormat('%b');
@@ -1479,7 +1600,10 @@ function timeTickFormat(spanDays) {
   };
 }
 
-/** Tabellenansicht: Kennzahlen des gewählten Zeitraums (Zugänglichkeit, ohne Hover) */
+/**
+ * Dieselben Zahlen als Tabelle: tiefster Wert, Durchschnitt, höchster Wert.
+ * Für alle, die keine Maus benutzen oder lieber Zahlen lesen.
+ */
 function renderSummaryTable(series = []) {
   const table = document.getElementById('ts-table');
   const f = state.ts.parameter === 'W' ? fmtCm : fmtTemp;
@@ -1500,14 +1624,14 @@ function renderSummaryTable(series = []) {
   table.replaceChildren(head, body);
 }
 
-/* ---------- 10) Tooltip, Crosshair, Resize, Animationen ----------- */
+/* ---------- 10) Was beim Darüberfahren und Scrollen passiert ------ */
 
-const DOCK_BELOW = 560; // unter dieser Grafikbreite: Werte-Panel unter der Explorer-Grafik
+const DOCK_BELOW = 560; // so schmal (Handy): Werte unter der Grafik statt darüber
 
 /**
- * Ein Tooltip pro Grafik. Nur die Explorer-Grafik («dockable») zeigt ihre
- * Werte auf schmalen Bildschirmen in einem Panel unter der Grafik, weil ihr
- * Tooltip bis zu sechs Zeilen hat und sonst die ganze Grafik verdecken würde.
+ * Das kleine Fenster mit den Werten (der «Tooltip»), das beim Darüberfahren
+ * erscheint. Bei «Selbst nachschauen» stehen die Werte auf dem Handy unter
+ * der Grafik, weil das Fenster dort sonst die ganze Grafik verdecken würde.
  */
 function getTooltip(chart, { dockable = false } = {}) {
   let node = [...chart.children].find((c) => c.classList.contains('tooltip'));
@@ -1541,7 +1665,7 @@ function getTooltip(chart, { dockable = false } = {}) {
       const cw = chart.clientWidth;
       const tw = node.offsetWidth;
       const th = node.offsetHeight;
-      // Tooltip links/rechts vom Punkt, nie über den Rand hinaus
+      // Das Fenster neben den Punkt setzen, aber nie über den Rand hinaus.
       let left = px + 16;
       if (left + tw > cw) left = px - tw - 16;
       if (left < 0) left = Math.max(0, Math.min(cw - tw, px - tw / 2));
@@ -1556,8 +1680,9 @@ function getTooltip(chart, { dockable = false } = {}) {
 }
 
 /**
- * Crosshair: Eine vertikale Linie folgt Maus/Finger und rastet am nächsten
- * Datenpunkt ein. Tastatur: Pfeiltasten links/rechts (mit Shift: 7 Tage), Esc schliesst.
+ * Die senkrechte Linie, die der Maus oder dem Finger folgt und beim
+ * nächsten Tag einrastet. Geht auch mit der Tastatur: Pfeiltasten links und
+ * rechts (mit Shift eine Woche), Esc schliesst.
  */
 function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, label, dockable = true }) {
   const tooltip = getTooltip(chart, { dockable });
@@ -1584,7 +1709,8 @@ function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, 
     return d3.leastIndex(positions, (p) => Math.abs(p - mx));
   };
 
-  // Transparente Fläche als Trefferzone – grösser als die Linien selbst
+  // Eine unsichtbare Fläche über der Grafik fängt die Maus ab, damit man
+  // nicht genau auf die dünne Linie zielen muss.
   g.append('rect').attr('width', innerW).attr('height', innerH).attr('fill', 'transparent')
     .style('cursor', 'crosshair')
     .on('pointermove pointerdown', (event) => show(nearest(event)))
@@ -1601,7 +1727,7 @@ function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, 
   };
   chart.onblur = hide;
 
-  // Touch: Tippen ausserhalb der Grafik schliesst den Tooltip (Listener nur einmal pro Grafik)
+  // Auf dem Handy: Tippt man neben die Grafik, verschwindet das Fenster.
   chart.hideCrosshair = hide;
   if (!chart.dataset.outsideListener) {
     chart.dataset.outsideListener = 'true';
@@ -1612,8 +1738,9 @@ function attachCrosshair({ chart, g, innerW, innerH, margin, positions, render, 
 }
 
 /**
- * Grafiken neu zeichnen (ohne neue Datenabfrage), wenn sich die Breite ändert
- * oder die Seite sichtbar wird – ein Hintergrund-Tab hat beim Laden die Breite 0.
+ * Wird das Fenster breiter oder schmaler (oder das Handy gedreht), werden
+ * alle Grafiken passend neu gezeichnet. Die Daten müssen dafür nicht neu
+ * geholt werden.
  */
 function setupResize() {
   let frame = null;
@@ -1630,7 +1757,7 @@ function setupResize() {
     });
   };
   window.addEventListener('resize', () => {
-    if (window.innerWidth === lastWidth) return; // mobile Adressleiste ändert nur die Höhe
+    if (window.innerWidth === lastWidth) return; // nur die Höhe hat sich geändert (Handy beim Scrollen): nichts tun
     lastWidth = window.innerWidth;
     redraw();
   });
@@ -1642,7 +1769,7 @@ function setupResize() {
   });
 }
 
-/** Lesefortschritt oben am Bildschirm */
+/** Die dünne orange Linie ganz oben: Sie zeigt, wie weit man schon gelesen hat */
 function setupProgress() {
   const bar = document.getElementById('progress-bar');
   let ticking = false;

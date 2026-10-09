@@ -2,55 +2,59 @@
 /**
  * Vorlage für die Zugangsdaten zur Datenbank.
  *
- * So legst du deine eigene Fassung an – im Hauptordner des Projekts:
+ * Die Datenbank ist wie ein abgeschlossener Raum: Man braucht eine Adresse,
+ * einen Benutzernamen und ein Passwort. Diese Angaben sind geheim.
+ *
+ * Deshalb gibt es zwei Dateien:
+ * - config.example.php (diese Datei): die leere Vorlage. Sie ist öffentlich
+ *   auf GitHub, damit man sieht, welche Angaben nötig sind.
+ * - config.php: die Kopie mit den echten Angaben. Sie ist nie auf GitHub,
+ *   nur auf dem eigenen Computer und auf dem Webserver.
+ *
+ * So legst du die echte Datei an, im Hauptordner des Projekts:
  *
  *     cp config.example.php config.php
  *
- * config.php steht in .gitignore und landet nie auf GitHub. PhpStorm lädt sie
- * trotzdem per FTP auf den Server, denn dort wird sie gebraucht. Diese Vorlage
- * ohne Werte bleibt im Repository, damit alle wissen, welche Angaben nötig sind.
- *
- * Eingebunden wird config.php von etl/load.php und unload.php.
+ * Danach die leeren Felder unten ausfüllen.
  */
 
 // --- Zugangsdaten -----------------------------------------------------------
 //
-// Die Datenbank läuft auf dem Webserver bei Hostpoint. Datenbank und Benutzer
-// legst du im Control Panel von Hostpoint an, dort stehen auch alle Werte.
-//
-// Hostpoint setzt den Namen deines Kontos vor Datenbank und Benutzer.
-// Fehlt dieser Vorsatz, meldet PDO «Access denied» oder «Unknown database».
+// Alle Werte stehen im Control Panel von Hostpoint, wo die Datenbank liegt.
+// Hostpoint setzt den Namen des Kontos vor Datenbank und Benutzer.
 
-$host     = '';
-$dbname   = '';
-$username = '';
-$password = '';
+$host     = ''; // Adresse des Datenbank-Servers
+$dbname   = ''; // Name der Datenbank
+$username = ''; // Benutzername
+$password = ''; // Passwort
 
-// --- Token für den Cronjob --------------------------------------------------
+// --- Passwort für den täglichen Import -------------------------------------
 //
-// Der Cronjob ruft etl/load.php per URL auf: …/etl/load.php?token=…
-// Ohne passendes Token startet kein Import. Einen langen Zufallswert eintragen,
-// zum Beispiel aus dem Terminal:  openssl rand -hex 24
-// Leer lassen = Import per URL gesperrt.
+// Der tägliche Import ruft etl/load.php über eine Web-Adresse auf:
+// …/etl/load.php?token=…
+// Nur wer dieses Passwort («Token») kennt, kann einen Import starten.
+// Einen langen Zufallswert eintragen, zum Beispiel aus dem Terminal:
+//     openssl rand -hex 24
+// Bleibt das Feld leer, ist der Import über die Web-Adresse gesperrt.
 
 $etlToken = '';
 
-// --- DSN: die Adresse der Datenbank -----------------------------------------
+// --- Die Adresse der Datenbank, zusammengesetzt ----------------------------
 //
-// DSN heisst Data Source Name. Er sagt PDO, welche Datenbank wo liegt.
-// charset=utf8mb4 sorgt dafür, dass Umlaute und «°C» richtig ankommen.
+// PHP braucht die Angaben von oben in einer bestimmten Form.
+// «utf8mb4» sorgt dafür, dass Umlaute und «°C» richtig ankommen.
 
 $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
 
-// --- Optionen für PDO -------------------------------------------------------
+// --- Einstellungen für die Verbindung --------------------------------------
 
 $options = [
-    // Fehler brechen laut ab, statt still zu scheitern. Wichtigste Zeile hier.
+    // Wenn etwas schiefgeht, gibt es eine klare Fehlermeldung statt Stille.
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
 
-    // Zeilen kommen als assoziative Arrays zurück: $row['river_name'].
+    // Jede Zeile kommt als Liste mit Namen zurück, z.B. $row['river_name'].
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 
-    // Platzhalter werden von der Datenbank selbst eingesetzt, nicht von PHP.
+    // Schutz vor Angriffen: Die Datenbank setzt die Werte selbst ein.
     PDO::ATTR_EMULATE_PREPARES   => false,
 ];

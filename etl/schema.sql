@@ -1,121 +1,129 @@
 -- =====================================================================
--- Schema: DataStory «Schweizer Flüsse im Jahreslauf»
--- Datenbank: MySQL 5.7+ / MariaDB 10.3+ (utf8mb4)
+-- Der Bauplan unserer Datenbank: «Heisser als der Hitzesommer»
 --
--- Vier Tabellen:
---   parameters    Messgrössen (W = Wasserstand, WT = Wassertemperatur)
---   stations      Messstationen des BAFU (Stammdaten aus der API)
---   observations  Tagesmittelwerte (eine Zeile = ein Messwert)
---   import_runs   Protokoll jedes ETL-Laufs (Transparenz für die Website)
+-- Eine Datenbank ist wie ein Ordner mit mehreren Tabellen. Unsere hat vier:
 --
--- Ausführen in der bestehenden Datenbank, z.B. in phpMyAdmin (Reiter «SQL»)
--- oder per Kommandozeile:  mysql -u USER -p DBNAME < etl/schema.sql
--- Das Script ist wiederholbar (CREATE TABLE IF NOT EXISTS / Upsert).
+--   parameters    Was wir messen: Wasserstand (W) und Wassertemperatur (WT)
+--   stations      Die sechs Messstationen an den Flüssen
+--   observations  Die Messwerte, ein Wert pro Zeile (rund 30 000 Zeilen)
+--   import_runs   Ein Protokoll: Wann wurde importiert, hat es geklappt?
+--
+-- Diese Datei wird nur einmal ausgeführt, um die leeren Tabellen anzulegen,
+-- zum Beispiel in phpMyAdmin im Reiter «SQL». Gefüllt werden die Tabellen
+-- danach automatisch von etl/load.php.
+-- Man kann die Datei gefahrlos mehrmals ausführen: Was es schon gibt, bleibt.
 -- =====================================================================
 
+-- Damit Umlaute und «°C» richtig gespeichert werden.
 SET NAMES utf8mb4;
 
 -- ---------------------------------------------------------------------
--- Messgrössen. Die Einheit ist eine Eigenschaft der Messgrösse, nicht
--- des einzelnen Messwerts – deshalb steht sie hier und nicht 30'000-mal
--- in observations. Der ETL prüft, ob die API-Einheit dazu passt.
+-- Tabelle 1: Was wir messen
+--
+-- Die Einheit (°C oder Meter) steht nur einmal hier und nicht bei jedem
+-- der 30 000 Messwerte. Das spart Platz und verhindert Tippfehler.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS parameters (
-    code        VARCHAR(4)   NOT NULL,               -- BAFU parameterName, z.B. 'W'
-    label       VARCHAR(60)  NOT NULL,               -- 'Wasserstand'
-    unit        VARCHAR(20)  NOT NULL,               -- 'm ü.M.' bzw. '°C'
-    description VARCHAR(255) NULL,
+    code        VARCHAR(4)   NOT NULL,               -- Kürzel, z.B. 'W'
+    label       VARCHAR(60)  NOT NULL,               -- Name, z.B. 'Wasserstand'
+    unit        VARCHAR(20)  NOT NULL,               -- Einheit: 'm ü.M.' oder '°C'
+    description VARCHAR(255) NULL,                   -- kurze Beschreibung
     PRIMARY KEY (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- Messstationen. station_no ist die offizielle BAFU-Stationsnummer
--- (z.B. '2019') und damit der fachliche Schlüssel; id ist der technische
--- Primärschlüssel für Fremdschlüssel.
+-- Tabelle 2: Die Messstationen
+--
+-- Jede Station hat zwei Nummern:
+-- - station_no: die offizielle Nummer beim BAFU, z.B. '2044' für die Thur
+-- - id: eine interne Nummer, die die Datenbank selbst vergibt
+-- Alle Angaben kommen direkt vom BAFU, nichts ist von Hand abgetippt.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS stations (
-    id             INT UNSIGNED  NOT NULL AUTO_INCREMENT,
-    station_no     VARCHAR(10)   NOT NULL,           -- BAFU «no»
-    name           VARCHAR(120)  NOT NULL,           -- BAFU «name»,  z.B. 'Brienzwiler'
-    river_name     VARCHAR(120)  NOT NULL,           -- BAFU «riverName», z.B. 'Aare'
-    site_name      VARCHAR(60)   NULL,               -- BAFU «siteName»
-    catchment_name VARCHAR(120)  NULL,               -- BAFU «catchmentName», z.B. 'Aaregebiet'
-    latitude       DECIMAL(10,7) NULL,               -- WGS84
+    id             INT UNSIGNED  NOT NULL AUTO_INCREMENT, -- interne Nummer (zählt automatisch hoch)
+    station_no     VARCHAR(10)   NOT NULL,           -- Nummer beim BAFU
+    name           VARCHAR(120)  NOT NULL,           -- Name der Station, z.B. 'Brienzwiler'
+    river_name     VARCHAR(120)  NOT NULL,           -- Fluss, z.B. 'Aare'
+    site_name      VARCHAR(60)   NULL,               -- Ortsname laut BAFU
+    catchment_name VARCHAR(120)  NULL,               -- Flussgebiet, z.B. 'Aaregebiet'
+    latitude       DECIMAL(10,7) NULL,               -- Koordinaten auf der Weltkarte
     longitude      DECIMAL(10,7) NULL,
-    elevation      DECIMAL(7,2)  NULL,               -- BAFU liefert oft NULL
-    status         VARCHAR(30)   NULL,               -- 'Aufgebaut' = in Betrieb
-    coverage_from  DATE          NULL,               -- frühestes Datum mit Daten (laut BAFU)
-    sort_order     SMALLINT      NOT NULL DEFAULT 0, -- Reihenfolge aus STATIONS (etl/extract.php)
-    is_active      TINYINT(1)    NOT NULL DEFAULT 1, -- 0 = nicht mehr in der Auswahl
-    created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    elevation      DECIMAL(7,2)  NULL,               -- Höhe über Meer (fehlt oft)
+    status         VARCHAR(30)   NULL,               -- 'Aufgebaut' = Station misst
+    coverage_from  DATE          NULL,               -- seit wann es Daten gibt
+    sort_order     SMALLINT      NOT NULL DEFAULT 0, -- Reihenfolge auf der Website
+    is_active      TINYINT(1)    NOT NULL DEFAULT 1, -- 1 = in Gebrauch, 0 = ausgeblendet
+    created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP, -- wann angelegt
+    updated_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, -- wann zuletzt geändert
     PRIMARY KEY (id),
-    UNIQUE KEY uq_stations_no (station_no)
+    UNIQUE KEY uq_stations_no (station_no)           -- jede BAFU-Nummer nur einmal
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- Import-Protokoll. Jeder Lauf von etl/load.php schreibt hier
--- eine Zeile – die Website zeigt daraus «zuletzt aktualisiert».
+-- Tabelle 3: Das Protokoll der Importe
+--
+-- Jeder Import schreibt hier eine Zeile: wann er lief, wie viele Werte
+-- neu, geändert oder weggelassen wurden, und ob alles geklappt hat.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS import_runs (
     id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    started_at      DATETIME     NOT NULL,           -- UTC
-    finished_at     DATETIME     NULL,               -- UTC
-    status          ENUM('running','success','partial','failed') NOT NULL DEFAULT 'running',
-    mode            VARCHAR(20)  NOT NULL,           -- 'incremental' | 'full'
-    aggregation     VARCHAR(40)  NOT NULL,           -- z.B. 'data_1day_mean'
-    window_from     DATE         NULL,               -- angefragter Zeitraum
-    window_to       DATE         NULL,
-    api_requests    INT UNSIGNED NOT NULL DEFAULT 0,
-    rows_received   INT UNSIGNED NOT NULL DEFAULT 0,
-    rows_inserted   INT UNSIGNED NOT NULL DEFAULT 0,
-    rows_updated    INT UNSIGNED NOT NULL DEFAULT 0, -- z.B. neuer Freigabestatus
-    rows_unchanged  INT UNSIGNED NOT NULL DEFAULT 0,
-    rows_rejected   INT UNSIGNED NOT NULL DEFAULT 0, -- Transform-Validierung
-    message         TEXT         NULL,
+    started_at      DATETIME     NOT NULL,           -- Start (Weltzeit)
+    finished_at     DATETIME     NULL,               -- Ende (Weltzeit)
+    status          ENUM('running','success','partial','failed') NOT NULL DEFAULT 'running', -- läuft / geklappt / teilweise / fehlgeschlagen
+    mode            VARCHAR(20)  NOT NULL,           -- 'incremental' = nur Neues, 'full' = alles
+    aggregation     VARCHAR(40)  NOT NULL,           -- welche Werte: 'data_1day_mean' = Tagesmittel
+    window_from     DATE         NULL,               -- abgefragter Zeitraum: von …
+    window_to       DATE         NULL,               -- … bis
+    api_requests    INT UNSIGNED NOT NULL DEFAULT 0, -- so oft beim BAFU gefragt
+    rows_received   INT UNSIGNED NOT NULL DEFAULT 0, -- so viele Werte bekommen
+    rows_inserted   INT UNSIGNED NOT NULL DEFAULT 0, -- davon neu
+    rows_updated    INT UNSIGNED NOT NULL DEFAULT 0, -- davon vom BAFU korrigiert
+    rows_unchanged  INT UNSIGNED NOT NULL DEFAULT 0, -- davon gleich geblieben
+    rows_rejected   INT UNSIGNED NOT NULL DEFAULT 0, -- davon weggelassen (unplausibel)
+    message         TEXT         NULL,               -- Fehlermeldung, falls etwas schiefging
     PRIMARY KEY (id),
     KEY idx_import_runs_started (started_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- Messwerte (Tagesmittel aus BAFU «data_1day_mean»).
+-- Tabelle 4: Die Messwerte – das Herzstück
 --
--- measured_at  Startzeitpunkt des Aggregationsintervalls in UTC, exakt
---              so wie ihn die API liefert (z.B. 2026-09-20 23:00:00).
--- obs_date     Der Kalendertag, zu dem der Wert gehört, in Schweizer
---              Normalzeit (MEZ, UTC+1): 2026-09-20 23:00 UTC → 2026-09-21.
---              Wird im Transform berechnet und fürs Frontend verwendet.
--- release_state  BAFU-Freigabestatus: 1 = provisorisch, 2 = validiert,
---              3 = definitiv. NULL = von der API ohne Status geliefert
---              (betrifft vor allem die jüngsten Werte).
+-- Jede Zeile ist ein Tagesmittel: eine Station, eine Messgrösse, ein Tag.
 --
--- Der UNIQUE-Key verhindert Duplikate: pro Station, Messgrösse und
--- Zeitpunkt existiert genau ein Wert. Der ETL nutzt ihn für ein
--- «INSERT … ON DUPLICATE KEY UPDATE» (Upsert).
+-- measured_at    Zeitpunkt, so wie ihn das BAFU liefert (in Weltzeit)
+-- obs_date       Der Tag in Schweizer Zeit, zu dem der Wert gehört
+-- release_state  Hat das BAFU den Wert schon kontrolliert?
+--                1 = noch nicht, 2 = ja, 3 = endgültig, leer = unbekannt
+--
+-- Die Regel «uq_obs_station_param_time» sorgt dafür, dass es jeden Wert nur
+-- einmal gibt. Kommt er nochmals, wird er überschrieben statt verdoppelt.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS observations (
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    station_id      INT UNSIGNED    NOT NULL,
-    parameter_code  VARCHAR(4)      NOT NULL,
-    measured_at     DATETIME        NOT NULL,
-    obs_date        DATE            NOT NULL,
-    value           DECIMAL(9,3)    NOT NULL,
-    release_state   TINYINT UNSIGNED NULL,
-    import_run_id   INT UNSIGNED    NULL,        -- welcher Lauf hat die Zeile zuletzt geschrieben
+    station_id      INT UNSIGNED    NOT NULL,        -- welche Station (interne Nummer)
+    parameter_code  VARCHAR(4)      NOT NULL,        -- W oder WT
+    measured_at     DATETIME        NOT NULL,        -- Zeitpunkt laut BAFU
+    obs_date        DATE            NOT NULL,        -- Tag in Schweizer Zeit
+    value           DECIMAL(9,3)    NOT NULL,        -- der Messwert, z.B. 16.850
+    release_state   TINYINT UNSIGNED NULL,           -- vom BAFU geprüft?
+    import_run_id   INT UNSIGNED    NULL,            -- welcher Import ihn zuletzt geändert hat
     created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uq_obs_station_param_time (station_id, parameter_code, measured_at),
-    KEY idx_obs_param_date (parameter_code, obs_date),
+    UNIQUE KEY uq_obs_station_param_time (station_id, parameter_code, measured_at), -- keine doppelten Werte
+    KEY idx_obs_param_date (parameter_code, obs_date), -- macht die Suche nach Datum schnell
+    -- Verknüpfungen zu den anderen Tabellen: Ein Messwert gehört immer zu einer
+    -- bestehenden Station und Messgrösse.
     CONSTRAINT fk_obs_station   FOREIGN KEY (station_id)     REFERENCES stations (id)   ON DELETE CASCADE,
     CONSTRAINT fk_obs_parameter FOREIGN KEY (parameter_code) REFERENCES parameters (code),
     CONSTRAINT fk_obs_import    FOREIGN KEY (import_run_id)  REFERENCES import_runs (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- Stammdaten: die beiden Messgrössen. Einheiten exakt wie im API-Feld
--- «unitSymbol». Stationen und Messwerte kommen AUSSCHLIESSLICH über den
--- ETL-Prozess aus der BAFU-API – hier werden keine Daten erfunden.
+-- Die zwei Messgrössen gleich eintragen.
+--
+-- Nur diese zwei Zeilen schreiben wir von Hand. Stationen und Messwerte
+-- kommen ausschliesslich vom BAFU über den Import – hier wird nichts erfunden.
 -- ---------------------------------------------------------------------
 INSERT INTO parameters (code, label, unit, description) VALUES
     ('W',  'Wasserstand',      'm ü.M.', 'Pegelhöhe der Wasseroberfläche in Metern über Meer (Tagesmittel)'),
