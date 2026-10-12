@@ -1,5 +1,5 @@
 -- =====================================================================
--- Der Bauplan unserer Datenbank: «Heisser als der Hitzesommer»
+-- Der Bauplan unserer Datenbank: «Wenn Flüsse Durst haben»
 --
 -- Eine Datenbank ist wie ein Ordner mit mehreren Tabellen. Unsere hat vier:
 --

@@ -1,5 +1,5 @@
 /**
- * «Heisser als der Hitzesommer» – alles, was im Browser passiert.
+ * «Wenn Flüsse Durst haben» – alles, was im Browser passiert.
  *
  * Diese Datei macht aus Zahlen Bilder. Sie arbeitet in vier Schritten:
  *

@@ -1,4 +1,4 @@
-# Heisser als der Hitzesommer
+# Wenn Flüsse Durst haben
 
 **Website:** https://im3.ixigamil.myhostpoint.ch/ ·
 **Datenquelle / API:** [BAFU Hydrologische Beobachtungen](https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations) (GraphQL: https://data.bafu.admin.ch/api)
