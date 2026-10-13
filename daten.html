@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body data-page="daten">
 
@@ -133,23 +133,20 @@
 
 <!-- =============================================================
      REGEN UND PEGEL PRO FLUSS
-     Für jeden Fluss: oben der Regen pro Woche, unten der Pegel.
+     Für jeden Fluss: oben der Regen seit 1. Januar, unten der Pegel,
+     jeweils 2022 und 2026 übereinander.
      ============================================================= -->
 <section class="section section--wide" id="regen" aria-labelledby="regen-title">
   <p class="section__label"><span>03</span>Regen</p>
   <div class="section__body">
     <h2 id="regen-title">Regen und Pegel</h2>
     <p class="section__lead">
-      Oben hängen die Regenmengen pro Woche wie Tropfen vom Himmel, unten verläuft der Pegel des Flusses.
-      Orange heisst: Der Fluss stand tiefer als im Durchschnitt. Die graue Linie ist der Pegel des anderen Jahres.
+      Oben der Regen seit dem 1. Januar, Tag für Tag zusammengezählt, unten der Pegel. Grau ist 2022, weiss 2026.
+      Orange heisst: 2026 fiel bis dahin weniger Regen, oder der Fluss stand tiefer. Blau heisst das Gegenteil.
     </p>
 
     <div class="toolbar" role="group" aria-label="Einstellungen Regen und Pegel">
-      <div class="segmented" role="radiogroup" aria-label="Jahr" id="rainm-year-switch">
-        <button type="button" role="radio" aria-checked="true"  data-year="2026">2026</button>
-        <button type="button" role="radio" aria-checked="false" data-year="2022">2022</button>
-      </div>
-      <div class="diff-legend" id="rainm-legend" aria-hidden="true"></div>
+      <div class="diff-legend diff-legend--left" id="rainm-legend" aria-hidden="true"></div>
     </div>
 
     <div class="multiples" id="rain-multiples">
@@ -295,6 +292,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=18" defer></script>
+<script src="script.js?v=20" defer></script>
 </body>
 </html>

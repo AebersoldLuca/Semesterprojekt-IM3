@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body data-page="story">
 
@@ -107,7 +107,8 @@
 <!-- =============================================================
      REGEN UND PEGEL
      Warum stehen die Flüsse tief? Links zwei Messbecher mit dem Regen
-     beider Jahre, rechts der Regen pro Woche und der Pegel darunter.
+     beider Jahre, rechts oben der Regen seit 1. Januar (beide Jahre),
+     darunter der Pegel (beide Jahre).
      ============================================================= -->
 <section class="section section--wide" id="regen" aria-labelledby="regen-title">
   <p class="section__label"><span>03</span>Regen</p>
@@ -119,10 +120,6 @@
 
     <div class="toolbar" role="group" aria-label="Einstellungen Regen und Pegel">
       <div class="segmented" role="radiogroup" aria-label="Fluss" id="rain-river-switch"></div>
-      <div class="segmented" role="radiogroup" aria-label="Jahr" id="rain-year-switch">
-        <button type="button" role="radio" aria-checked="true"  data-year="2026">2026</button>
-        <button type="button" role="radio" aria-checked="false" data-year="2022">2022</button>
-      </div>
       <div class="diff-legend" id="rain-legend" aria-hidden="true"></div>
     </div>
 
@@ -130,7 +127,7 @@
       <div class="gauges" id="rain-gauges" aria-live="polite"></div>
       <div class="rain__main">
         <div class="chart chart--rain" id="rain-chart" tabindex="0"
-             aria-label="Regen pro Woche und Pegel des Flusses. Pfeiltasten wechseln den Tag."></div>
+             aria-label="Regen seit 1. Januar und Pegel des Flusses, 2022 und 2026. Pfeiltasten wechseln den Tag."></div>
       </div>
     </div>
     <p class="note" id="rain-note"></p>
@@ -201,6 +198,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=18" defer></script>
+<script src="script.js?v=20" defer></script>
 </body>
 </html>
