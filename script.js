@@ -860,6 +860,7 @@ function rainTile(stations) {
     el('p', { class: 'stat__ref' }, `${fmtMm(refMean)} → ${fmtMm(curMean)}, Schnitt von 3 Wetterstationen`),
     el('div', { class: 'stat__more' },
       el('p', { class: 'stat__more-title' }, el('strong', {}, `${fmtSigned(roundShown(change))}\u00a0%`),
+        ` im Mittelland. So sieht es pro Fluss aus (Regen 1. Januar bis ${cutoffLabel()}, ${YEARS.ref} → ${YEARS.cur}):`),
       el('ul', {}, rows)));
 }
 
