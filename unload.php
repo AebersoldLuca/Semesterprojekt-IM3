@@ -6,8 +6,8 @@
  * sie aus unserer eigenen Datenbank und schickt sie als Liste zurück, in
  * einem Format, das JavaScript direkt versteht (JSON).
  *
- * Wichtig: Hier wird nie beim BAFU gefragt. Deshalb läuft die Website auch
- * dann, wenn das BAFU gerade nicht erreichbar ist.
+ * Wichtig: Hier wird nie beim BAFU oder bei MeteoSchweiz gefragt. Deshalb
+ * läuft die Website auch dann, wenn die beiden gerade nicht erreichbar sind.
  *
  * Ablauf:
  *
@@ -27,7 +27,9 @@
  *     "date": "2026-09-27",               Tag
  *     "water_temperature_c": 16.8,        Wassertemperatur in °C (oder null = kein Wert)
  *     "water_level_deviation_cm": -27,    Wasserstand: so viele cm über/unter normal (oder null)
- *     "release_state": 2                  vom BAFU geprüft? 1 nein, 2 ja, 3 endgültig (oder null)
+ *     "release_state": 2,                 vom BAFU geprüft? 1 nein, 2 ja, 3 endgültig (oder null)
+ *     "precipitation_mm": 12.4,           Regen an diesem Tag im Gebiet des Flusses (oder null)
+ *     "precipitation_station": "St. Gallen"  wo dieser Regen gemessen wurde (MeteoSchweiz)
  *   }
  *
  * Mögliche Fragen (alle freiwillig und kombinierbar):
@@ -50,7 +52,7 @@ require __DIR__ . '/config.php';
 // ---------------------------------------------------------------------------
 //
 // Hier steht an einer einzigen Stelle, wie ein Datensatz aussieht.
-// Drei Dinge werden dabei noch ausgerechnet:
+// Drei Dinge werden dabei noch ausgerechnet (der Regen kommt unverändert dazu):
 //
 // - Der Ort: Das BAFU schreibt manchmal «Rheinfelden, Messstation».
 //   Wir nehmen nur den Teil vor dem Komma.
@@ -94,6 +96,9 @@ function normalizeRecord(array $row): array
             ? round(((float) $row['w'] - (float) $row['mean_level']) * 100, 1)
             : null,
         'release_state' => $releaseState,
+        // Der Regen: leer (null) heisst «nicht gemessen», nicht «kein Regen».
+        'precipitation_mm' => $row['rain'] !== null ? round((float) $row['rain'], 1) : null,
+        'precipitation_station' => $row['rain_station'],
     ];
 }
 
@@ -230,6 +235,10 @@ try {
     //
     // Zusätzlich rechnen wir für jede Station den durchschnittlichen
     // Wasserstand aus. Das ist die «Null-Linie» für den Vergleich.
+    //
+    // Und wir hängen den Regen desselben Tages an, gemessen an der
+    // Wetterstation, die zu diesem Fluss gehört. «LEFT JOIN» heisst: Fehlt
+    // der Regen an einem Tag, bleibt der Datensatz trotzdem, nur ohne Regen.
     $sql = "SELECT s.station_no,
                    s.river_name,
                    s.name AS station_name,
@@ -238,7 +247,9 @@ try {
                    MAX(CASE WHEN o.parameter_code = 'WT' THEN o.release_state END) AS wt_state,
                    MAX(CASE WHEN o.parameter_code = 'W' THEN o.value END) AS w,
                    MAX(CASE WHEN o.parameter_code = 'W' THEN o.release_state END) AS w_state,
-                   b.mean_level
+                   b.mean_level,
+                   MAX(p.precipitation_mm) AS rain,
+                   MAX(ws.name) AS rain_station
             FROM observations AS o
             JOIN stations AS s ON s.id = o.station_id
             LEFT JOIN (
@@ -247,6 +258,8 @@ try {
                 WHERE parameter_code = 'W'
                 GROUP BY station_id
             ) AS b ON b.station_id = s.id
+            LEFT JOIN weather_stations AS ws ON ws.river_station_no = s.station_no
+            LEFT JOIN precipitation AS p ON p.weather_station_id = ws.id AND p.obs_date = o.obs_date
             WHERE " . implode(' AND ', $where) . '
             GROUP BY s.id, o.obs_date
             ORDER BY s.sort_order, o.obs_date';

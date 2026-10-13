@@ -1,15 +1,17 @@
 # Wenn Flüsse Durst haben
 
 **Website:** https://im3.ixigamil.myhostpoint.ch/ ·
-**Datenquelle / API:** [BAFU Hydrologische Beobachtungen](https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations) (GraphQL: https://data.bafu.admin.ch/api)
+**Datenquellen / APIs:** [BAFU Hydrologische Beobachtungen](https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations) (GraphQL: https://data.bafu.admin.ch/api) ·
+[MeteoSchweiz Open Data, automatische Wetterstationen](https://opendatadocs.meteoswiss.ch/a-data-groundbased/a1-automatic-weather-stations) (CSV über https://data.geo.admin.ch)
 
 ## Kurzbeschreibung
 
 Die DataStory prüft die Hypothese, dass die Flüsse im Mittelland 2026 bisher wärmer waren und weniger Wasser
 führten als im Hitzesommer 2022. Grundlage sind Tagesmittel von Wassertemperatur und Wasserstand an sechs
-Messstationen des BAFU. Ein PHP-ETL-Prozess lädt die Daten täglich per Cronjob in eine eigene MySQL-Datenbank;
-die Website liest nur daraus und vergleicht beide Jahre in interaktiven D3-Grafiken – mit drei Alpenflüssen
-als Vergleichsgruppe.
+Messstationen des BAFU sowie der tägliche Niederschlag an sechs passenden Wetterstationen von MeteoSchweiz.
+Ein PHP-ETL-Prozess lädt die Daten täglich per Cronjob in eine eigene MySQL-Datenbank; die Website liest nur
+daraus. Die Story (`index.html`) zeigt die wichtigsten Zahlen und drei Grafiken, die Datenseite (`daten.html`)
+alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 
 ## Learnings
 
@@ -35,6 +37,9 @@ als Vergleichsgruppe.
 - **Stilles Abschneiden:** Mit `limit: 10000` in der Abfrage kürzt die API zu grosse Antworten ohne Fehlermeldung.
   Entdeckt erst durch gezieltes Testen; jetzt ohne `limit` und mit Zusatzprüfung gelöst. Ausserdem blockt die API
   Anfragen ohne User-Agent mit HTTP 403 – im Unterrichtsbeispiel für die Sensorbox war das nicht nötig.
+- **Zwei sehr verschiedene Quellen:** MeteoSchweiz bietet keine Abfrage-API, sondern pro Station eine CSV-Datei
+  (Latin-1-kodiert, über 40 Spalten, Werte ab 1864). Die grosse Datei sprengte zuerst den Arbeitsspeicher; jetzt
+  behält das Script nur die drei nötigen Spalten. Ein fehlender Regentag bleibt leer statt 0 mm.
 - **Wasserstand in Metern über Meer:** Absolute Pegel (z.B. 570 m ü.M. in Brienzwiler, 198 m ü.M. am Ticino)
   sind nicht vergleichbar. Lösung: Abweichung vom mittleren Pegel jeder Station in Zentimetern.
 - **Unklarer Freigabestatus:** Die API liefert neben 1/2/3 oft `null`. Dieser Wert wird als «ohne Status»
@@ -54,6 +59,8 @@ als Vergleichsgruppe.
 
 - **Datenquelle:** Bundesamt für Umwelt BAFU, Datensatz «Hydrologische Beobachtungen» –
   https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations
+- **Datenquelle Regen:** MeteoSchweiz Open Data, SwissMetNet, Parameter `rka150d0` (Tagessumme Niederschlag) –
+  https://opendatadocs.meteoswiss.ch/a-data-groundbased/a1-automatic-weather-stations
 - **BAFU-API und Dokumentation** (Filter, Pagination, Ratenbegrenzung, Lizenz):
   https://api.data-platform.cloud.bafu.admin.ch/ · GraphQL-Endpunkt https://data.bafu.admin.ch/api
 - **Lizenz der Daten:** «Freie Nutzung. Quellenangabe ist Pflicht.» (opendata.swiss)

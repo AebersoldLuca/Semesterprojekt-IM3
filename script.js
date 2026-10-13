@@ -4,7 +4,7 @@
  * Diese Datei macht aus Zahlen Bilder. Sie arbeitet in vier Schritten:
  *
  *   Holen      Die Messwerte bei unload.php abholen (also aus unserer
- *              eigenen Datenbank, nie direkt beim BAFU).
+ *              eigenen Datenbank, nie direkt beim BAFU oder bei MeteoSchweiz).
  *   Umformen   Die Werte sortieren und 2022 mit 2026 vergleichen.
  *   Zeichnen   Daraus die Grafiken zeichnen. Dafür nutzen wir D3.js,
  *              eine Programmbibliothek für Datengrafiken.
@@ -13,7 +13,14 @@
  * Jeder Messwert kommt von unload.php in derselben Form (dem «Datenvertrag»):
  *
  *   station_no, river_name, station_name, date,
- *   water_temperature_c, water_level_deviation_cm, release_state
+ *   water_temperature_c, water_level_deviation_cm, release_state,
+ *   precipitation_mm, precipitation_station
+ *
+ * Die Datei arbeitet für zwei Seiten. Im HTML steht, welche gerade offen ist
+ * (<body data-page="…">):
+ *
+ *   story   index.html: die Geschichte mit den wichtigsten Grafiken
+ *   daten   daten.html: alle Grafiken und Daten zum Vertiefen
  *
  * Unsere These: «2026 waren die Flüsse im Mittelland bisher wärmer und
  * führten weniger Wasser als im Hitzesommer 2022.»
@@ -25,9 +32,10 @@
  *    2) Start: was beim Öffnen der Seite passiert
  *    3) 2022 und 2026 vergleichen, «Schätz mal!»
  *    4) Die Grafik ganz oben (zwei Flüsse)
- *    5) Die drei grossen Zahlen
+ *    5) Die vier grossen Zahlen
  *    6) Die sechs Messstellen
  *    7) Jahr gegen Jahr: eine Grafik pro Fluss
+ *    7b) Regen und Pegel
  *    8) Das Urteil, der Tipp, Hervorheben, Daten und Methode
  *    9) Selbst nachschauen: alle Daten seit 2020
  *   10) Was beim Darüberfahren und Scrollen passiert
@@ -41,6 +49,9 @@
 
 // Hier holt die Seite ihre Daten ab.
 const ENDPUNKT = 'unload.php';
+
+/** Welche Seite gerade offen ist: 'story' (index.html) oder 'daten' (daten.html) */
+const PAGE = document.body.dataset.page || 'story';
 
 /** Die zwei Jahre, die wir vergleichen: 2022 (Hitzesommer) und 2026 */
 const YEARS = { ref: 2022, cur: 2026 };
@@ -68,13 +79,14 @@ const GROUPS = [
   { key: 'alpen', title: 'Alpen · Kontrollgruppe' },
 ];
 
-/** Wo im Datensatz die Temperatur bzw. der Wasserstand steht */
-const FIELD = { WT: 'water_temperature_c', W: 'water_level_deviation_cm' };
+/** Wo im Datensatz die Temperatur, der Wasserstand bzw. der Regen steht */
+const FIELD = { WT: 'water_temperature_c', W: 'water_level_deviation_cm', N: 'precipitation_mm' };
 
-/** Beschriftungen für Temperatur und Wasserstand */
+/** Beschriftungen für Temperatur, Wasserstand und Regen (N wie Niederschlag) */
 const PARAM_INFO = {
   WT: { label: 'Wassertemperatur', axis: 'in °C' },
   W:  { label: 'Wasserstand', axis: 'Abweichung vom mittleren Pegel in cm' },
+  N:  { label: 'Regen', axis: 'in mm pro Tag' },
 };
 
 /** Hat das BAFU den Wert schon geprüft? So steht es im Tooltip. */
@@ -110,6 +122,8 @@ const roundShown = (v, digits = 0) => (Math.sign(v) * Math.round(Math.abs(v) * 1
 const fmtSigned = (v, digits = 0) => (v > 0 ? '+' : v < 0 ? '−' : '±') + nf(digits).format(Math.abs(v));
 const fmtTemp = (v) => `${fmt1(v)}\u00a0°C`; // «16.8 °C», das °C rutscht nie allein auf die nächste Zeile
 const fmtCm = (v) => `${fmtSigned(v)}\u00a0cm`; // «−17 cm»
+const fmtMm = (v) => `${fmt0(v)}\u00a0mm`; // «632 mm» (Regen)
+const fmtMmDay = (v) => `${fmt1(v)}\u00a0mm`; // «12.4 mm» (Regen an einem Tag)
 const longDate = (iso) => fmtDateLong(parseDate(iso));
 
 // Zu einer Stationsnummer die eigenen Angaben von oben finden.
@@ -144,7 +158,7 @@ function setSlot(name, content) {
 }
 
 /**
- * Kleine Symbole: Thermometer, Sonne, Welle, Stift.
+ * Kleine Symbole: Thermometer, Sonne, Welle, Stift, Regentropfen.
  * Jedes ist mit ein paar Linien gezeichnet, als Text im Code (keine Bilddateien).
  * Die Farbe bestimmt das CSS.
  */
@@ -154,6 +168,7 @@ const ICONS = {
     'M2 12h2.2', 'M19.8 12H22', 'M4.9 19.1l1.6-1.6', 'M17.5 6.5l1.6-1.6'],
   waveDown: ['M2 7.5c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0', 'M12 11v9', 'M8.5 16.5 12 20l3.5-3.5'],
   pen: ['M4 20l1.2-4.4L16.4 4.4a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.4 18.8Z', 'M14.5 6.5l3 3'],
+  drop: ['M12 3c-3.2 4.2-6 7.6-6 11a6 6 0 0 0 12 0c0-3.4-2.8-6.8-6-11Z', 'M9.2 14.5a2.8 2.8 0 0 0 2.3 2.6'],
 };
 
 /** Ein Symbol als eigenes kleines Bild für den Text */
@@ -275,6 +290,8 @@ const state = {
   compareRecords: null,  // alle Messwerte von 2022 und 2026
   cmp: null,             // der fertige Vergleich 2022 gegen 2026
   compare: { parameter: 'WT', smooth: 7 }, // «Jahr gegen Jahr»: Temperatur, 7-Tage-Mittel
+  rain: { no: HERO_STATION, year: YEARS.cur }, // «Regen und Pegel» auf der Story-Seite: welcher Fluss, welches Jahr
+  rainMulti: { year: YEARS.cur },               // «Regen und Pegel» auf der Datenseite: welches Jahr
   focus: { hover: null, pinned: null }, // welcher Fluss gerade hervorgehoben ist
   zoom: { no: null },    // welcher Fluss gross angezeigt wird
   ts: { parameter: 'WT', days: '365', hidden: new Set(), records: null, range: null, request: 0 }, // «Selbst nachschauen»
@@ -288,53 +305,71 @@ document.addEventListener('DOMContentLoaded', init);
  * 1. Knöpfe bereit machen
  * 2. Daten holen
  * 3. Alle Grafiken zeichnen
+ *
+ * Die Story-Seite braucht nur die Jahre 2022 und 2026. Die Datenseite holt
+ * zusätzlich die letzten 365 Tage (für die Liste der Messstellen).
  */
 async function init() {
   setupProgress();
   setupFocus();
-  setupSegmented('cmp-param-switch', 'param', (v) => setCompareOption('parameter', v));
-  setupSegmented('cmp-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
-  setupSegmented('zoom-param-switch', 'param', (v) => setCompareOption('parameter', v));
-  setupSegmented('zoom-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
-  setupSegmented('param-switch', 'param', (v) => { state.ts.parameter = v; loadTimeseries(); });
-  setupSegmented('range-switch', 'days', (v) => { state.ts.days = v; loadTimeseries(); });
-  setupZoom();
+  if (PAGE === 'story') {
+    setupSegmented('rain-year-switch', 'year', (v) => setRainYear(Number(v)));
+  } else {
+    setupSegmented('cmp-param-switch', 'param', (v) => setCompareOption('parameter', v));
+    setupSegmented('cmp-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
+    setupSegmented('zoom-param-switch', 'param', (v) => setCompareOption('parameter', v));
+    setupSegmented('zoom-smooth-switch', 'smooth', (v) => setCompareOption('smooth', Number(v)));
+    setupSegmented('rainm-year-switch', 'year', (v) => { state.rainMulti.year = Number(v); renderRainMultiples(); });
+    setupSegmented('param-switch', 'param', (v) => { state.ts.parameter = v; loadTimeseries(); });
+    setupSegmented('range-switch', 'days', (v) => { state.ts.days = v; loadTimeseries(); });
+    setupZoom();
+  }
 
-  let recent;
+  let recent = [];
   let compare;
   try {
-    // Zwei Fragen gleichzeitig: die letzten 365 Tage und die Jahre 2022 und 2026.
-    [recent, compare] = await Promise.all([unload(), unload({ years: `${YEARS.ref},${YEARS.cur}` })]);
+    // Die Jahre 2022 und 2026 holen. Auf der Datenseite gleichzeitig auch die letzten 365 Tage.
+    [compare, recent] = await Promise.all([
+      unload({ years: `${YEARS.ref},${YEARS.cur}` }),
+      PAGE === 'daten' ? unload() : [],
+    ]);
   } catch (err) {
     fatal(err);
     return;
   }
-  if (!recent.length) {
+  if (!compare.length) {
     fatal(new Error('In der Datenbank sind noch keine Messwerte vorhanden. Bitte zuerst den Import (etl/load.php) ausführen.'));
     return;
   }
 
   // Die Daten ins Gedächtnis der Seite legen.
   state.recent = groupByStation(recent);
-  state.latest = d3.max(recent, (r) => r.date);
+  state.latest = d3.max([...recent, ...compare], (r) => r.date);
   for (const r of [...recent, ...compare]) {
-    if (!state.names.has(r.station_no)) state.names.set(r.station_no, { river_name: r.river_name, station_name: r.station_name });
+    if (!state.names.has(r.station_no)) {
+      state.names.set(r.station_no, { river_name: r.river_name, station_name: r.station_name, rain_station: r.precipitation_station });
+    }
   }
   state.compareRecords = compare;
   state.cmp = buildCompare(compare);
 
   // Jetzt alle Teile der Seite zeichnen, von oben nach unten.
-  renderStripes();
-  setupDraw();
-  renderStats();
-  renderStationGroups();
-  renderMultiples();
-  renderVerdict();
-  setupTip();
+  if (PAGE === 'story') {
+    renderStripes();
+    setupDraw();
+    renderStats();
+    setupRain();
+    renderVerdict();
+    setupTip();
+  } else {
+    renderStationGroups();
+    renderMultiples();
+    renderRainMultiples();
+    setupMethod();
+    renderLegend();
+    loadTimeseries();
+  }
   renderFacts();
-  setupMethod();
-  renderLegend();
-  loadTimeseries();
   setupResize();
 }
 
@@ -342,10 +377,11 @@ async function init() {
 function fatal(err) {
   showToast(err.message);
   const msg = `Die Daten sind momentan nicht verfügbar: ${err.message}`;
-  setStatus('ts-status', msg);
-  for (const id of ['stripes-rows', 'stats', 'station-groups', 'cmp-multiples', 'verdict']) {
-    document.getElementById(id).replaceChildren(el('p', { class: 'muted' }, msg));
+  // Überall, wo sonst eine Grafik stünde, die Meldung zeigen (nur was es auf dieser Seite gibt).
+  for (const id of ['stripes-rows', 'stats', 'rain-gauges', 'station-groups', 'cmp-multiples', 'rain-multiples', 'verdict']) {
+    document.getElementById(id)?.replaceChildren(el('p', { class: 'muted' }, msg));
   }
+  if (document.getElementById('ts-status')) setStatus('ts-status', msg);
 }
 
 /**
@@ -397,12 +433,16 @@ function buildCompare(records) {
   const curDates = records.filter((r) => r.date.startsWith(String(YEARS.cur))).map((r) => r.date);
   const cutoff = curDates.length ? d3.max(curDates).slice(5) : '12-31';
 
-  // Die Zahlen eines Jahres: Durchschnitt, heisse Tage, Wasserstand, geprüfte Tage.
+  // Die Zahlen eines Jahres: Durchschnitt, heisse Tage, Wasserstand, Regen, geprüfte Tage.
   const summarize = (recs) => {
     const upTo = recs.filter((r) => r.date.slice(5) <= cutoff);
     const wt = upTo.map((r) => r.water_temperature_c).filter((v) => v != null);
     const w = upTo.map((r) => r.water_level_deviation_cm).filter((v) => v != null);
+    const rain = upTo.map((r) => r.precipitation_mm).filter((v) => v != null);
     return {
+      // Regen: alles zusammengezählt, und an wie vielen Tagen gemessen wurde.
+      rain_sum: d3.sum(rain),
+      rain_days: rain.length,
       wt_mean: wt.length ? d3.mean(wt) : null,
       days_ge_20: wt.filter((v) => v >= 20).length,
       days_ge_25: wt.filter((v) => v >= 25).length,
@@ -739,12 +779,13 @@ function renderHeroFacts(s) {
       ` über 20\u00a0°C warm, ${YEARS.ref} an ${fmt0(ref)}.`));
 }
 
-/* ---------- 5) Die drei grossen Zahlen ----------------------------- */
+/* ---------- 5) Die vier grossen Zahlen ----------------------------- */
 
 /**
- * Drei Karten mit je einer grossen Zahl: heisse Tage, wärmer, tiefer.
- * Für jede Karte nehmen wir den Mittellandfluss mit dem deutlichsten
- * Unterschied, und zwar drei verschiedene Flüsse.
+ * Vier Karten mit je einer grossen Zahl: heisse Tage, wärmer, tiefer, Regen.
+ * Für die ersten drei nehmen wir den Mittellandfluss mit dem deutlichsten
+ * Unterschied, und zwar drei verschiedene Flüsse. Die vierte zeigt den
+ * Regen im ganzen Mittelland.
  */
 function renderStats() {
   const box = document.getElementById('stats');
@@ -783,8 +824,27 @@ function renderStats() {
     tile(lowest, 'waveDown', fmtSigned(delta(lowest, 'w_mean')), 'cm',
       `tieferer Wasserstand als ${YEARS.ref}, im Mittel`,
       `${fmtCm(lowest.ref.summary.w_mean)} → ${fmtCm(lowest.cur.summary.w_mean)} ggü. mittlerem Pegel`),
+    rainTile(ml),
   );
   applyFocus();
+}
+
+/**
+ * Die vierte Karte: Wie viel mehr oder weniger Regen fiel im Mittelland?
+ * Wir nehmen den Durchschnitt der drei Wetterstationen von Limmat, Thur und Rhein.
+ * Gibt es noch keine Regendaten, fällt die Karte einfach weg.
+ */
+function rainTile(stations) {
+  const change = rainChange(stations);
+  if (change == null) return null;
+  const refMean = d3.mean(stations, (s) => s.ref.summary.rain_sum);
+  const curMean = d3.mean(stations, (s) => s.cur.summary.rain_sum);
+  return el('article', { class: 'stat stat--rain' },
+    icon('drop', 'icon stat__icon'),
+    el('div', { class: 'stat__river' }, 'Mittelland · Regen'),
+    el('span', { class: 'stat__value' }, fmtSigned(roundShown(change)), el('small', {}, '%')),
+    el('p', { class: 'stat__label' }, `${change < 0 ? 'weniger' : 'mehr'} Regen als ${YEARS.ref}, zusammengezählt`),
+    el('p', { class: 'stat__ref' }, `${fmtMm(refMean)} → ${fmtMm(curMean)}, Schnitt von 3 Wetterstationen`));
 }
 
 /* ---------- 6) Die sechs Messstellen ------------------------------- */
@@ -805,7 +865,8 @@ function renderStationGroups() {
       return el('li', { class: 'station focusable', 'data-station': s.no, 'data-pin': '' },
         el('div', {},
           el('div', { class: 'station__name' }, keySwatch(s.no), el('span', { class: 'station__river' }, n.river_name)),
-          el('div', { class: 'station__site' }, `${n.station_name} · Nr. ${s.no}`)),
+          el('div', { class: 'station__site' }, `${n.station_name} · Nr. ${s.no}`),
+          n.rain_station ? el('div', { class: 'station__site' }, `Regen: ${n.rain_station}`) : null),
         el('p', { class: 'station__role' }, s.role),
         el('div', { class: 'station__spark', 'data-spark': s.no, 'aria-hidden': 'true' }),
         el('div', { class: 'station__now' },
@@ -1139,6 +1200,375 @@ function renderZoom() {
   drawMultiple(document.getElementById('zoom-chart'), s, { yMin, yMax, isW, f, large: true });
 }
 
+/* ---------- 7b) Regen und Pegel ------------------------------------ */
+
+/*
+ * Warum steht ein Fluss tief? Oft, weil es zu wenig geregnet hat.
+ * Diese Grafiken zeigen beides übereinander:
+ *
+ *   oben    der Regen pro Woche, als Balken, die wie Tropfen von oben hängen
+ *   unten   der Pegel des Flusses als Linie. Orange: tiefer als normal.
+ *
+ * Auf der Story-Seite gibt es dazu zwei «Messbecher», die zeigen, wie viel
+ * Regen bis zum Stichtag insgesamt gefallen ist: 2022 gegen 2026.
+ */
+
+/** Gibt es überhaupt schon Regendaten? (Vor dem ersten Regen-Import nicht.) */
+const hasRain = (cmp = state.cmp) => cmp.stations.some((s) => s.ref.summary.rain_days > 0 && s.cur.summary.rain_days > 0);
+
+/**
+ * Um wie viel Prozent hat es 2026 mehr oder weniger geregnet als 2022?
+ * Für mehrere Flüsse zusammen: Wir zählen den Regen aller Stationen
+ * zusammen und vergleichen die beiden Summen. Ohne Regendaten: null.
+ */
+function rainChange(stations) {
+  const withRain = stations.filter((s) => s.ref.summary.rain_days > 0 && s.cur.summary.rain_days > 0);
+  if (!withRain.length) return null;
+  const ref = d3.sum(withRain, (s) => s.ref.summary.rain_sum);
+  const cur = d3.sum(withRain, (s) => s.cur.summary.rain_sum);
+  return ref > 0 ? ((cur - ref) / ref) * 100 : null;
+}
+
+/**
+ * Der Regen eines Jahres, zusammengezählt pro Woche.
+ * Woche 0 ist der 1. bis 7. Januar, Woche 1 der 8. bis 14. Januar und so
+ * weiter, in beiden Jahren gleich. Gezählt wird nur bis zum Stichtag.
+ * Ein Tag ohne Messung zählt nicht mit (wir tun nicht so, als wären es 0 mm).
+ */
+function rainWeeks(records, cutoff = state.cmp.cutoff) {
+  const weeks = new Map();
+  for (const r of records) {
+    const md = r.date.slice(5);
+    if (r.precipitation_mm == null || md > cutoff) continue;
+    const week = Math.floor(dayIndex(md) / 7);
+    if (!weeks.has(week)) weeks.set(week, { week, start: d3.utcDay.offset(YEAR_START, week * 7), sum: 0, days: 0 });
+    const w = weeks.get(week);
+    w.sum += r.precipitation_mm;
+    w.days++;
+  }
+  return [...weeks.values()].sort((a, b) => a.week - b.week);
+}
+
+/** Der Pegel eines Jahres als Linie (7-Tage-Mittel), nur bis zum Stichtag */
+const levelPoints = (records, year) => yearPoints(records, year, 'W', 7).filter((p) => p.x <= mdDate(state.cmp.cutoff));
+
+/**
+ * Wie hoch müssen die Achsen gehen? Wir schauen über beide Jahre (und über
+ * alle mitgegebenen Flüsse), damit sich beim Umschalten die Skala nicht ändert.
+ */
+function rainScales(stations) {
+  const rainMax = d3.max(stations.flatMap((s) => [...rainWeeks(s.ref.records), ...rainWeeks(s.cur.records)]), (w) => w.sum) ?? 10;
+  const levels = stations.flatMap((s) => [...levelPoints(s.ref.records, YEARS.ref), ...levelPoints(s.cur.records, YEARS.cur)])
+    .map((p) => p.value).filter((v) => v != null);
+  const [lo, hi] = d3.extent(levels);
+  return { rainMax: Math.max(10, rainMax), lvlMin: Math.min(0, lo ?? 0), lvlMax: Math.max(0, hi ?? 0) };
+}
+
+/** Die Legende über der Grafik: Balken = Regen, Linie = Pegel, Orange = tiefer als normal */
+function rainLegend(year) {
+  const other = year === YEARS.cur ? YEARS.ref : YEARS.cur;
+  return [
+    el('span', {}, el('span', { class: 'swatch', style: 'background:var(--rain)' }), 'Regen pro Woche'),
+    el('span', {}, el('span', { class: 'swatch swatch--line', style: 'background:var(--ink)' }), `Pegel ${year}`),
+    el('span', {}, el('span', { class: 'swatch swatch--line swatch--dashed' }), `Pegel ${other}`),
+    el('span', {}, el('span', { class: 'swatch', style: 'background:var(--signal)' }), 'tiefer als normal'),
+  ];
+}
+
+/**
+ * Die Grafik «Regen und Pegel» für einen Fluss und ein Jahr.
+ *
+ * - year: welches Jahr kräftig gezeichnet wird. Das andere Jahr erscheint
+ *   als graue, gestrichelte Pegel-Linie zum Vergleichen.
+ * - rainMax, lvlMin, lvlMax: die Skalen (siehe rainScales).
+ * - compact: kleine Version für die Datenseite.
+ */
+function drawRain(chart, s, { year, rainMax, lvlMin, lvlMax, compact = false }) {
+  d3.select(chart).selectAll('svg').remove();
+  const width = chart.clientWidth;
+  const height = chart.clientHeight;
+  const small = width < 560; // Handy?
+  const m = { top: 8, right: compact ? 30 : 40, bottom: 24, left: compact ? 36 : 44 };
+  const innerW = width - m.left - m.right;
+  const innerH = height - m.top - m.bottom;
+  if (innerW < 60 || innerH < 100) return; // noch nicht sichtbar
+
+  // Die Fläche aufteilen: oben 40 % für den Regen, dann ein Abstand, darunter der Pegel.
+  const gap = compact ? 12 : 22;
+  const rainH = Math.round((innerH - gap) * 0.4);
+  const levelTop = rainH + gap;
+
+  const isCur = year === YEARS.cur;
+  const part = isCur ? s.cur : s.ref;        // das gewählte Jahr
+  const other = isCur ? s.ref : s.cur;       // das andere Jahr, nur als graue Linie
+  const otherYear = isCur ? YEARS.ref : YEARS.cur;
+  const cutoff = mdDate(state.cmp.cutoff);
+  const weeks = rainWeeks(part.records);
+  const level = levelPoints(part.records, year);
+  const ghost = levelPoints(other.records, otherYear);
+
+  // Die Umrechnungen von Werten in Pixel:
+  // x = Datum, yRain = Regen (0 oben, viel Regen = langer Balken nach unten), yLevel = Pegel.
+  const x = d3.scaleUtc().domain([YEAR_START, cutoff]).range([0, innerW]);
+  const yRain = d3.scaleLinear().domain([0, rainMax]).nice().range([0, rainH]);
+  const yLevel = d3.scaleLinear().domain([lvlMin, lvlMax]).nice().range([innerH, levelTop]);
+
+  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+  // Oben: ein heller «Himmel» und die Regen-Achse (0 oben, mehr Regen weiter unten).
+  g.append('rect').attr('class', 'rain-sky').attr('width', innerW).attr('height', rainH).attr('rx', 6);
+  g.append('g').attr('class', 'axis axis--y')
+    .call(d3.axisLeft(yRain).ticks(compact ? 2 : 3).tickSize(-innerW).tickFormat((v) => (v ? fmt0(v) : '')))
+    .call((a) => a.selectAll('.tick text').attr('x', -6));
+  g.append('text').attr('class', 'axis-unit').attr('x', innerW + 6).attr('y', 10).text('mm');
+
+  // Die Regenbalken: einer pro Woche. Sie wachsen beim Zeichnen von oben nach unten.
+  const barW = Math.max(1, x(d3.utcDay.offset(YEAR_START, 7)) - x(YEAR_START) - (compact ? 1 : 2));
+  // Wachsen lassen macht das CSS, sobald die Grafik sichtbar wird (siehe revealOnScroll).
+  const bars = g.append('g').selectAll('rect').data(weeks).join('rect')
+    .attr('class', 'rain-bar')
+    .style('--i', (w, i) => i)
+    .attr('x', (w) => x(w.start) + (compact ? 0.5 : 1))
+    .attr('width', (w) => Math.max(0, Math.min(barW, innerW - x(w.start))))
+    .attr('rx', Math.min(barW / 2, 3))
+    .attr('y', 0)
+    .attr('height', (w) => yRain(w.sum));
+  revealOnScroll(chart.closest('.rain, .multiples') ?? chart);
+
+  // Unten: die Pegel-Achse und die Null-Linie («mittlerer Pegel»).
+  g.append('g').attr('class', 'axis axis--y')
+    .call(d3.axisLeft(yLevel).ticks(compact ? 3 : 5).tickSize(-innerW).tickFormat((v) => fmtSigned(v)))
+    .call((a) => a.selectAll('.tick text').attr('x', -6));
+  g.append('text').attr('class', 'axis-unit').attr('x', innerW + 6).attr('y', levelTop + 10).text('cm');
+  g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', yLevel(0)).attr('y2', yLevel(0));
+  if (!compact) {
+    g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', yLevel(0) - 5).text('mittlerer Pegel');
+  }
+
+  // Die Fläche zwischen Pegel und Null-Linie: orange, wo der Fluss tiefer stand, blau, wo höher.
+  const defined = (p) => p.value != null;
+  g.append('path').attr('class', 'level-low')
+    .attr('d', d3.area().defined(defined).x((p) => x(p.x)).y0(yLevel(0)).y1((p) => yLevel(Math.min(0, p.value)))(level));
+  g.append('path').attr('class', 'level-high')
+    .attr('d', d3.area().defined(defined).x((p) => x(p.x)).y0(yLevel(0)).y1((p) => yLevel(Math.max(0, p.value)))(level));
+
+  // Die zwei Pegel-Linien: das andere Jahr grau gestrichelt, das gewählte Jahr kräftig.
+  const line = d3.line().defined(defined).x((p) => x(p.x)).y((p) => yLevel(p.value));
+  g.append('path').attr('class', 'level-ghost').attr('d', line(ghost));
+  g.append('path').attr('class', 'level-line').attr('d', line(level));
+
+  // Die Jahreszahl ans Ende jeder Linie schreiben.
+  const lastOf = (pts) => [...pts].reverse().find(defined);
+  const lg = lastOf(ghost);
+  const ll = lastOf(level);
+  if (lg) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(lg.x) + 4).attr('y', yLevel(lg.value)).attr('dy', '0.35em').text(otherYear);
+  if (ll) g.append('text').attr('class', 'year-label').attr('x', x(ll.x) + 4).attr('y', yLevel(ll.value)).attr('dy', '0.35em').text(year);
+
+  // Die Monate unten.
+  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(small || compact ? 2 : 1)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')))
+    .call((a) => a.selectAll('.tick line').attr('y2', 3));
+
+  // Mit der Maus darüber: die Woche leuchtet auf, ein Fenster zeigt Regen und Pegel.
+  const levelBy = new Map(level.filter(defined).map((p) => [+p.x, p]));
+  const ghostBy = new Map(ghost.filter(defined).map((p) => [+p.x, p]));
+  const weekBy = new Map(weeks.map((w) => [w.week, w]));
+  const days = d3.utcDay.range(YEAR_START, d3.utcDay.offset(cutoff, 1));
+  const names = state.names.get(s.no);
+
+  attachCrosshair({
+    chart, g, innerW, innerH, margin: m,
+    dockable: false,
+    positions: days.map((d) => x(d)),
+    render(i, hover) {
+      const d = days[i];
+      const week = weekBy.get(Math.floor(dayIndex(fmtMd(d)) / 7));
+      bars.classed('is-active', (w) => w === week);
+      const pl = levelBy.get(+d);
+      const pg = ghostBy.get(+d);
+      const dots = [pg && { p: pg, fill: 'var(--year-ref)' }, pl && { p: pl, fill: 'var(--ink)' }].filter(Boolean);
+      hover.selectAll('circle').data(dots).join('circle').attr('class', 'hover-dot').attr('r', 4.5)
+        .style('fill', (o) => o.fill).attr('cx', x(d)).attr('cy', (o) => yLevel(o.p.value));
+      const row = (label, key, value) => el('div', { class: 'tooltip__row' },
+        el('span', { class: 'tooltip__key', style: `background:${key}` }),
+        el('span', { class: 'tooltip__name' }, label),
+        el('span', { class: 'tooltip__value' }, value));
+      const weekEnd = week && d3.utcDay.offset(week.start, 6);
+      return el('div', {},
+        el('div', { class: 'tooltip__date' }, `${names.river_name}, ${fmtDayMonth(d)}`),
+        row(week ? `Regen ${fmtDayShort(week.start)}–${fmtDayShort(weekEnd > cutoff ? cutoff : weekEnd)}` : 'Regen', 'var(--rain)',
+          week ? fmtMm(week.sum) : 'kein Wert'),
+        row(`Pegel ${year}`, 'var(--bg)', pl ? fmtCm(pl.value) : 'kein Wert'), // dunkler Punkt, weil das Fenster hell ist
+        row(`Pegel ${otherYear}`, 'var(--year-ref)', pg ? fmtCm(pg.value) : 'kein Wert'));
+    },
+    label: (i) => fmtDayMonth(days[i]),
+  });
+  // Verlässt die Maus die Grafik, leuchtet keine Woche mehr.
+  chart.onpointerleave = () => bars.classed('is-active', false);
+}
+
+/* ----- Regen und Pegel auf der Story-Seite ----- */
+
+/**
+ * Einmal beim Start: die Knöpfe für die drei Mittellandflüsse bauen und
+ * dann alles zeichnen. Ohne Regendaten erscheint ein kurzer Hinweis.
+ */
+function setupRain() {
+  const box = document.getElementById('rain-river-switch');
+  if (!box) return;
+  const ml = inGroup('mittelland');
+  if (!ml.some((s) => s.no === state.rain.no)) state.rain.no = ml[0]?.no;
+  box.replaceChildren(...ml.map((s) => el('button', {
+    type: 'button', role: 'radio', 'aria-checked': String(s.no === state.rain.no), 'data-no': s.no,
+  }, state.names.get(s.no).river_name)));
+  setupSegmented('rain-river-switch', 'no', (no) => { state.rain.no = no; renderRain(); });
+  renderRain();
+}
+
+/** Titel, Einleitung, Messbecher und Grafik für den gewählten Fluss */
+function renderRain() {
+  const chart = document.getElementById('rain-chart');
+  if (!chart || !state.cmp) return;
+  const ml = inGroup('mittelland');
+  const s = ml.find((c) => c.no === state.rain.no);
+  if (!s || !hasRain()) {
+    document.getElementById('rain-gauges').replaceChildren(el('p', { class: 'muted' }, 'Für den Regen sind noch keine Daten gespeichert.'));
+    return;
+  }
+
+  // Der Titel hängt vom Ergebnis ab: weniger Regen, mehr Regen oder etwa gleich viel.
+  // So stimmt die Überschrift auch dann, wenn sich die Daten ändern.
+  const change = rainChange(ml);
+  const shown = roundShown(change);
+  setSlot('rain-title', change <= -10 ? 'Der Regen fehlte' : change >= 10 ? 'Am Regen lag es nicht' : 'Etwa gleich viel Regen');
+  setSlot('rain-lead', [
+    `Vom 1. Januar bis ${cutoffLabel()} fiel im Gebiet von Limmat, Thur und Rhein ${YEARS.cur} `,
+    el('strong', {}, shown === 0 ? 'gleich viel Regen' : `${fmt0(Math.abs(shown))} % ${shown < 0 ? 'weniger' : 'mehr'} Regen`),
+    ` als im Hitzesommer-Jahr ${YEARS.ref}. Weniger Regen heisst weniger Wasser für die Flüsse. `,
+    'Ganz aufgehen muss die Rechnung aber nicht: Auch Seen, Schneeschmelze und Verdunstung reden mit.',
+  ]);
+
+  renderGauges(s);
+  drawRainChart();
+}
+
+/**
+ * Die zwei Messbecher: Wie viel Regen ist bis zum Stichtag gefallen?
+ * Der vollere Becher ist ganz gefüllt, der andere im richtigen Verhältnis.
+ * Ein Klick auf einen Becher zeigt dieses Jahr in der Grafik.
+ */
+function renderGauges(s) {
+  const box = document.getElementById('rain-gauges');
+  const names = state.names.get(s.no);
+  const ref = s.ref.summary.rain_sum;
+  const cur = s.cur.summary.rain_sum;
+  const max = Math.max(ref, cur) || 1;
+  const change = ref > 0 ? roundShown(((cur - ref) / ref) * 100) : null;
+
+  const gauge = (year, sum) => {
+    const button = el('button', { type: 'button', class: 'gauge', 'data-year': String(year), 'aria-pressed': String(year === state.rain.year),
+      'aria-label': `${year}: ${fmtMm(sum)} Regen. ${year} in der Grafik zeigen.` },
+      el('span', { class: 'gauge__value' }, fmt0(sum), el('small', {}, 'mm')),
+      el('span', { class: 'gauge__tube', 'aria-hidden': 'true' },
+        el('span', { class: 'gauge__fill', style: `--fill:${(sum / max) * 100}%` })),
+      el('span', { class: 'gauge__year' }, String(year)));
+    button.addEventListener('click', () => setRainYear(year));
+    return button;
+  };
+
+  box.replaceChildren(
+    el('p', { class: 'gauges__title' }, `Regen in ${names.rain_station ?? 'der Region'}`, el('small', {}, `1. Januar bis ${cutoffLabel()}`)),
+    el('div', { class: 'gauges__row' }, gauge(YEARS.ref, ref), gauge(YEARS.cur, cur)),
+    change != null ? el('p', { class: 'gauges__delta' }, el('strong', {}, `${fmtSigned(change)} %`), ` ${YEARS.cur} gegenüber ${YEARS.ref}`) : null);
+
+  // Die Becher füllen sich langsam, sobald man hinscrollt (das CSS macht die Bewegung).
+  revealOnScroll(box);
+}
+
+/**
+ * Gibt einem Teil der Seite die Klasse «is-visible», sobald er zu einem
+ * Drittel im Bild ist. Das CSS startet dann die Bewegung (Regen fällt,
+ * Becher füllen sich). Das passiert nur einmal, beim ersten Hinscrollen.
+ */
+function revealOnScroll(node) {
+  if (node.classList.contains('is-visible') || node.dataset.revealWatch) return;
+  if (!('IntersectionObserver' in window)) { node.classList.add('is-visible'); return; }
+  node.dataset.revealWatch = 'true';
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      node.classList.add('is-visible');
+      observer.disconnect();
+    }
+  }, { threshold: 0.3 });
+  observer.observe(node);
+}
+
+/** Ein anderes Jahr wählen: Knöpfe und Becher anpassen, Grafik neu zeichnen */
+function setRainYear(year) {
+  state.rain.year = year;
+  setSegmentedValue('rain-year-switch', 'year', year);
+  document.querySelectorAll('#rain-gauges .gauge').forEach((g) => g.setAttribute('aria-pressed', String(Number(g.dataset.year) === year)));
+  drawRainChart();
+}
+
+/** Nur die Grafik neu zeichnen (beim Umschalten des Jahres und wenn das Fenster die Grösse ändert) */
+function drawRainChart() {
+  const chart = document.getElementById('rain-chart');
+  const s = state.cmp && inGroup('mittelland').find((c) => c.no === state.rain.no);
+  if (!chart || !s || !hasRain()) return;
+  const names = state.names.get(s.no);
+  document.getElementById('rain-legend').replaceChildren(...rainLegend(state.rain.year));
+  document.getElementById('rain-note').textContent =
+    `Balken: Regen pro Woche in ${names.rain_station ?? 'der Region'} (MeteoSchweiz). ` +
+    `Linie: Pegel der ${names.river_name} in ${names.station_name} (BAFU), 7-Tage-Mittel, Abweichung vom mittleren Pegel seit 2020. ` +
+    'Wer auf einen Messbecher klickt, sieht das andere Jahr.';
+  drawRain(chart, s, { year: state.rain.year, ...rainScales([s]) });
+}
+
+/* ----- Regen und Pegel auf der Datenseite: eine Grafik pro Fluss ----- */
+
+/**
+ * Sechs kleine Grafiken, eine pro Fluss, alle mit derselben Skala.
+ * Oben in jeder Grafik steht, wie viel Regen 2022 und 2026 gefallen ist.
+ */
+function renderRainMultiples() {
+  const container = document.getElementById('rain-multiples');
+  if (!container || !state.cmp) return;
+  if (!hasRain()) {
+    container.replaceChildren(el('p', { class: 'muted' }, 'Für den Regen sind noch keine Daten gespeichert.'));
+    return;
+  }
+  const year = state.rainMulti.year;
+  const stations = state.cmp.stations;
+  const scales = rainScales(stations); // dieselbe Skala für alle: fairer Vergleich
+
+  document.getElementById('rainm-legend').replaceChildren(...rainLegend(year));
+  document.getElementById('rain-multiples-note').textContent =
+    `Regen pro Woche an je einer Wetterstation von MeteoSchweiz, Pegel als 7-Tage-Mittel (BAFU), jeweils 1. Januar bis ${cutoffLabel()}. ` +
+    'Alle Grafiken haben dieselbe Skala.';
+
+  container.replaceChildren(...GROUPS.map((group) => el('div', { class: 'multiples__group' },
+    el('p', { class: 'multiples__group-title' }, group.title),
+    el('div', { class: 'multiples__grid' }, stations.filter((s) => s.info.group === group.key).map((s) => {
+      const n = state.names.get(s.no);
+      const ref = s.ref.summary.rain_sum;
+      const cur = s.cur.summary.rain_sum;
+      const change = ref > 0 ? roundShown(((cur - ref) / ref) * 100) : null;
+      return el('div', { class: 'multiple focusable', 'data-station': s.no },
+        el('div', { class: 'multiple__head' }, el('p', { class: 'multiple__title' }, keySwatch(s.no), displayName(s.no))),
+        el('p', { class: 'multiple__sub' }, `Regen ${n.rain_station ?? ''}: ${fmt0(ref)} → `, el('strong', {}, fmtMm(cur)),
+          change != null ? ` (${fmtSigned(change)} %)` : ''),
+        el('div', { class: 'chart chart--rain-small', tabindex: '0',
+          'aria-label': `${displayName(s.no)}: Regen pro Woche und Pegel ${year}. Pfeiltasten wechseln den Tag.` }));
+    })))));
+
+  for (const s of stations) {
+    drawRain(container.querySelector(`.multiple[data-station="${s.no}"] .chart--rain-small`), s, { year, ...scales, compact: true });
+  }
+  applyFocus();
+}
+
 /* ---------- 8) Das Urteil: Stimmt die These? ---------------------- */
 
 // War ein Fluss 2026 wärmer bzw. tiefer? Wir entscheiden mit den angezeigten,
@@ -1179,6 +1609,11 @@ function renderVerdict(cmp = state.cmp) {
   const { word, cls, lead } = verdictOf(cmp);
 
   const pct = (s) => (s.cur.summary.count ? `${fmt0((s.cur.summary.checked / s.cur.summary.count) * 100)} %` : '–');
+  // Der Regen gehört nicht zur These, hilft aber beim Erklären: wie viel Prozent mehr oder weniger als 2022.
+  const rain = (s) => {
+    const change = rainChange([s]);
+    return change == null ? '–' : `${fmtSigned(roundShown(change))} %`;
+  };
   // Ein voller Kreis heisst «ja», ein leerer «nein». Daneben steht es auch als Wort,
   // damit es nicht nur an der Farbe hängt (wichtig z.B. bei Farbenblindheit).
   const cell = (ok, yes, no, value) => el('td', {}, el('span', { class: 'cell' },
@@ -1187,6 +1622,7 @@ function renderVerdict(cmp = state.cmp) {
     el('th', { scope: 'row' }, keySwatch(s.no), displayName(s.no)),
     cell(warm(s), 'wärmer', 'nicht wärmer', `${fmtSigned(delta(s, 'wt_mean'), 1)} °C`),
     cell(low(s), 'tiefer', 'nicht tiefer', fmtCm(delta(s, 'w_mean'))),
+    el('td', { class: 'matrix__rain' }, rain(s)),
     el('td', {}, pct(s)));
 
   box.replaceChildren(
@@ -1198,15 +1634,17 @@ function renderVerdict(cmp = state.cmp) {
         el('th', { scope: 'col' }, 'Fluss'),
         el('th', { scope: 'col' }, `Temperatur vs. ${YEARS.ref}`),
         el('th', { scope: 'col' }, `Pegel vs. ${YEARS.ref}`),
+        el('th', { scope: 'col' }, `Regen vs. ${YEARS.ref}`),
         el('th', { scope: 'col' }, `Geprüfte Tage ${YEARS.cur}`))),
       el('tbody', {},
-        el('tr', { class: 'group-row' }, el('th', { colspan: '4', scope: 'rowgroup' }, 'Mittelland · These')),
+        el('tr', { class: 'group-row' }, el('th', { colspan: '5', scope: 'rowgroup' }, 'Mittelland · These')),
         ml.map((s) => row(s, false)),
-        al.length ? el('tr', { class: 'group-row' }, el('th', { colspan: '4', scope: 'rowgroup' }, 'Alpen · Kontrollgruppe')) : null,
+        al.length ? el('tr', { class: 'group-row' }, el('th', { colspan: '5', scope: 'rowgroup' }, 'Alpen · Kontrollgruppe')) : null,
         al.map((s) => row(s, true))))),
     el('p', { class: 'verdict__footnote' }, el('sup', {}, '* '),
       `Verglichen werden die Mittelwerte vom 1. Januar bis ${cutoff}. Viele Werte von ${YEARS.cur} sind vom BAFU noch nicht geprüft, und das Jahr ist nicht vorbei. `,
-      'Die Alpenflüsse gehören nicht zur These. Sie zeigen, dass Schmelzwasser anders auf einen heissen Sommer reagiert.'));
+      'Die Alpenflüsse gehören nicht zur These. Sie zeigen, dass Schmelzwasser anders auf einen heissen Sommer reagiert. ',
+      'Der Regen (MeteoSchweiz) zählt nicht fürs Urteil, er hilft nur beim Erklären.'));
   applyFocus();
 }
 
@@ -1314,21 +1752,29 @@ function renderFacts() {
  */
 const METHOD_STEPS = {
   api: {
-    title: 'BAFU-API', tech: 'data.bafu.admin.ch/api',
-    text: 'Das Bundesamt für Umwelt veröffentlicht die Messwerte seiner hydrologischen Stationen über eine offene GraphQL-API. Wir nutzen die Tagesmittel von Wassertemperatur und Wasserstand, seit dem 1. Januar 2020.',
-    live: () => [el('p', { class: 'step-panel__label' }, 'Unsere sechs Messstationen'),
+    title: 'Zwei Quellen', tech: 'BAFU (GraphQL) · MeteoSchweiz (CSV)',
+    text: 'Das Bundesamt für Umwelt veröffentlicht die Messwerte seiner Flussstationen über eine offene GraphQL-API. Wir nutzen die Tagesmittel von Wassertemperatur und Wasserstand. MeteoSchweiz stellt die Werte seiner Wetterstationen als CSV-Dateien bereit. Daraus nehmen wir den Regen pro Tag. Beides seit dem 1. Januar 2020.',
+    live: () => [el('p', { class: 'step-panel__label' }, 'Unsere sechs Flüsse und ihre Wetterstationen'),
       el('ul', { class: 'step-list' }, STATIONS.filter((st) => state.names.has(st.no)).map((st) =>
-        el('li', {}, el('b', {}, displayName(st.no)), el('small', {}, `Nr. ${st.no} · ${st.group === 'mittelland' ? 'Mittelland' : 'Alpen'}`))))],
+        el('li', {}, el('b', {}, displayName(st.no)),
+          el('small', {}, `Nr. ${st.no} · ${st.group === 'mittelland' ? 'Mittelland' : 'Alpen'}`
+            + (state.names.get(st.no).rain_station ? ` · Regen: ${state.names.get(st.no).rain_station}` : '')))))],
   },
   extract: {
-    title: 'Extract', tech: 'etl/extract.php',
-    text: 'Jeden Morgen startet ein Cronjob den Import. Das PHP-Script fragt die API per POST ab. Pro Abfrage liefert sie höchstens 10 000 Zeilen, deshalb wird der Zeitraum in Fenster von 666 Tagen aufgeteilt.',
-    live: () => [el('p', { class: 'step-panel__label' }, 'Die Abfrage an die API (GraphQL)'),
-      el('pre', {}, 'data_1day_mean(where: {\n  station: { no: { _in: ["2243", "2044", …] } }\n  parameterName: { _in: ["W", "WT"] }\n  timestamp: { _gte: $from, _lt: $to }\n}) {\n  parameterName unitSymbol timestamp value releaseState\n}')],
+    title: 'Extract', tech: 'etl/extract.php · etl/extract_meteo.php',
+    text: 'Jeden Morgen startet ein Cronjob den Import. Das PHP-Script fragt die BAFU-API per POST ab. Pro Abfrage liefert sie höchstens 10 000 Zeilen, deshalb wird der Zeitraum in Fenster von 666 Tagen aufgeteilt. Für den Regen lädt ein zweites Script pro Wetterstation eine CSV-Datei von MeteoSchweiz und behält nur die Spalte mit dem Regen.',
+    live: () => {
+      const r = latestRecord((rec) => rec.precipitation_mm != null);
+      return [el('p', { class: 'step-panel__label' }, 'Die Abfrage an die BAFU-API (GraphQL)'),
+        el('pre', {}, 'data_1day_mean(where: {\n  station: { no: { _in: ["2243", "2044", …] } }\n  parameterName: { _in: ["W", "WT"] }\n  timestamp: { _gte: $from, _lt: $to }\n}) {\n  parameterName unitSymbol timestamp value releaseState\n}'),
+        r ? el('p', { class: 'step-panel__label' }, `Eine Zeile aus der CSV-Datei von MeteoSchweiz (${r.precipitation_station}, gekürzt)`) : null,
+        r ? el('pre', {}, `station_abbr;reference_timestamp;…;rka150d0;…\n…;${fmtDotted(parseDate(r.date))} 00:00;…;${r.precipitation_mm};…`) : null];
+    },
   },
   transform: {
-    title: 'Transform', tech: 'etl/transform.php',
-    text: 'Jede Zeile wird geprüft: bekannte Station, richtige Einheit, gültiger Zeitstempel, plausibler Wert. Aus der UTC-Zeit der API wird der Kalendertag in Schweizer Zeit. Was nicht passt, wird verworfen und gezählt, nie geschätzt.',
+    title: 'Transform',
+    tech: 'etl/transform.php · etl/transform_meteo.php',
+    text: 'Jede Zeile wird geprüft: bekannte Station, richtige Einheit, gültiger Zeitstempel, plausibler Wert. Aus der UTC-Zeit der API wird der Kalendertag in Schweizer Zeit. Beim Regen sind 0 bis 500 mm pro Tag erlaubt, ein Tag ohne Messung bleibt leer statt 0 mm. Was nicht passt, wird verworfen und gezählt, nie geschätzt.',
     live: () => {
       const r = latestRecord((rec) => rec.water_temperature_c != null);
       if (!r) return [];
@@ -1342,17 +1788,19 @@ const METHOD_STEPS = {
   },
   load: {
     title: 'Load', tech: 'etl/load.php · MySQL',
-    text: 'Die geprüften Werte kommen in unsere eigene MySQL-Datenbank. Eine UNIQUE-Regel verhindert doppelte Messwerte. Jeder Import lädt die letzten 60 Tage neu, damit Korrekturen des BAFU ankommen. Fällt die API aus, bleiben die Daten hier erhalten.',
-    live: () => [el('p', { class: 'step-panel__label' }, 'Vier Tabellen'),
+    text: 'Die geprüften Werte kommen in unsere eigene MySQL-Datenbank. Eine UNIQUE-Regel verhindert doppelte Messwerte. Jeder Import lädt die letzten 60 Tage neu, damit Korrekturen von BAFU und MeteoSchweiz ankommen. Fällt eine Quelle aus, bleiben die Daten hier erhalten.',
+    live: () => [el('p', { class: 'step-panel__label' }, 'Sechs Tabellen'),
       el('ul', { class: 'step-list' },
         el('li', {}, el('b', {}, 'observations'), el('small', {}, 'ein Messwert pro Zeile')),
         el('li', {}, el('b', {}, 'stations'), el('small', {}, 'die sechs Messstationen')),
         el('li', {}, el('b', {}, 'parameters'), el('small', {}, 'W und WT mit Einheit')),
+        el('li', {}, el('b', {}, 'precipitation'), el('small', {}, 'Regen pro Tag und Wetterstation')),
+        el('li', {}, el('b', {}, 'weather_stations'), el('small', {}, 'die sechs Wetterstationen')),
         el('li', {}, el('b', {}, 'import_runs'), el('small', {}, 'Protokoll jedes Imports')))],
   },
   unload: {
     title: 'Unload', tech: 'unload.php → JSON',
-    text: 'unload.php liest nur aus unserer Datenbank und liefert JSON nach dem Datenvertrag: eine Station an einem Tag, sieben Felder. Mit Filtern in der URL kommt nur, was die Grafik braucht.',
+    text: 'unload.php liest nur aus unserer Datenbank und liefert JSON nach dem Datenvertrag: eine Station an einem Tag, neun Felder, der Regen inklusive. Mit Filtern in der URL kommt nur, was die Grafik braucht.',
     live: () => {
       const r = latestRecord(() => true);
       return r ? [el('p', { class: 'step-panel__label' }, `Ein Datensatz, so wie ihn diese Seite gerade geladen hat`),
@@ -1362,7 +1810,7 @@ const METHOD_STEPS = {
   },
   story: {
     title: 'Story', tech: 'script.js · D3.js',
-    text: 'script.js holt die Daten mit fetch() und zeichnet die Grafiken mit D3.js. Die BAFU-API wird im Browser nie aufgerufen. Alle Zahlen im Text werden aus den Daten berechnet und ändern sich nach jedem Import.',
+    text: 'script.js holt die Daten mit fetch() und zeichnet die Grafiken mit D3.js. BAFU und MeteoSchweiz werden im Browser nie aufgerufen. Alle Zahlen im Text werden aus den Daten berechnet und ändern sich nach jedem Import.',
     live: () => [el('p', { class: 'step-panel__label' }, 'Auf dieser Seite gerade geladen'),
       el('p', { class: 'step-count' }, `${fmt0(loadedRecordCount())} Datensätze`)],
   },
@@ -1459,7 +1907,8 @@ async function loadTimeseries() {
   const request = ++ts.request;
   chart.classList.add('is-loading'); // die alte Grafik bleibt blass sichtbar, bis die neue da ist
   try {
-    const records = await unload({ stations: visible.map((s) => s.no).join(','), parameter: ts.parameter, from, to });
+    // Beim Regen gibt es keinen Filter «parameter»: Er hängt an jedem Datensatz dran.
+    const records = await unload({ stations: visible.map((s) => s.no).join(','), parameter: ts.parameter === 'N' ? null : ts.parameter, from, to });
     if (request !== ts.request) return; // inzwischen wurde schon wieder etwas anderes gewählt
     ts.records = records;
     ts.range = { from: from ?? d3.min(records, (r) => r.date), to };
@@ -1484,7 +1933,7 @@ function toSeries(records, parameter) {
     for (const r of byNo.get(s.no)) {
       const date = parseDate(r.date);
       if (prev && d3.utcDay.count(prev, date) > 1) points.push({ date: d3.utcDay.offset(prev, 1), value: null });
-      points.push({ date, value: r[field], release: r.release_state });
+      points.push({ date, value: r[field], release: r.release_state, rainStation: r.precipitation_station });
       prev = date;
     }
     return { no: s.no, points };
@@ -1494,11 +1943,13 @@ function toSeries(records, parameter) {
 function renderTimeseries() {
   const ts = state.ts;
   const info = PARAM_INFO[ts.parameter];
-  document.getElementById('ts-title').textContent = `${info.label}, Tagesmittel`;
+  document.getElementById('ts-title').textContent = `${info.label}, ${ts.parameter === 'N' ? 'Summe pro Tag' : 'Tagesmittel'}`;
   document.getElementById('ts-unit').textContent = info.axis;
-  document.getElementById('ts-note').textContent = ts.parameter === 'W'
-    ? 'Wasserstände liegen je nach Ort auf ganz unterschiedlicher Höhe. Die Grafik zeigt deshalb, wie viele Zentimeter ein Fluss über oder unter seinem eigenen mittleren Pegel seit 2020 stand.'
-    : 'Tagesmittel der Wassertemperatur. Gestrichelte Linie: 20 °C.';
+  document.getElementById('ts-note').textContent = {
+    W: 'Wasserstände liegen je nach Ort auf ganz unterschiedlicher Höhe. Die Grafik zeigt deshalb, wie viele Zentimeter ein Fluss über oder unter seinem eigenen mittleren Pegel seit 2020 stand.',
+    WT: 'Tagesmittel der Wassertemperatur. Gestrichelte Linie: 20 °C.',
+    N: 'Regen pro Tag an der Wetterstation von MeteoSchweiz im Gebiet des Flusses. Für lange Zeiträume eignet sich die Grafik «Regen und Pegel» weiter oben besser.',
+  }[ts.parameter];
 
   const chart = document.getElementById('ts-chart');
   if (!ts.records || !ts.records.length) return;
@@ -1545,7 +1996,7 @@ function renderTimeseries() {
   g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
   if (ts.parameter === 'W') {
     g.append('text').attr('class', 'refline-label').attr('x', innerW).attr('y', y(0) - 5).attr('text-anchor', 'end').text('mittlerer Pegel');
-  } else if (hi >= 20) {
+  } else if (ts.parameter === 'WT' && hi >= 20) {
     g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(20)).attr('y2', y(20));
     g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(20) - 5).text('20 °C');
   }
@@ -1563,7 +2014,7 @@ function renderTimeseries() {
 
   const dates = [...new Set(series.flatMap((s) => s.points.filter((p) => p.value != null).map((p) => +p.date)))].sort((a, b) => a - b);
   const byDate = series.map((s) => new Map(s.points.filter((p) => p.value != null).map((p) => [+p.date, p])));
-  const f = ts.parameter === 'W' ? fmtCm : fmtTemp;
+  const f = { W: fmtCm, WT: fmtTemp, N: fmtMmDay }[ts.parameter];
 
   attachCrosshair({
     chart, g, innerW, innerH, margin: m,
@@ -1579,7 +2030,9 @@ function renderTimeseries() {
         rows.map(({ s, p }) => el('div', { class: 'tooltip__row' },
           el('span', { class: 'tooltip__key', style: `background:${colorOf(s.no)}` }),
           el('span', { class: 'tooltip__name' }, state.names.get(s.no).river_name,
-            el('small', {}, `${state.names.get(s.no).station_name} · ${RELEASE_LABEL[p.release] ?? 'ohne Status'}`)),
+            el('small', {}, ts.parameter === 'N'
+              ? `Regen in ${p.rainStation ?? '–'}`
+              : `${state.names.get(s.no).station_name} · ${RELEASE_LABEL[p.release] ?? 'ohne Status'}`)),
           el('span', { class: 'tooltip__value' }, f(p.value)))));
     },
     label: (i) => fmtDateLong(new Date(dates[i])),
@@ -1606,7 +2059,7 @@ function timeTickFormat(spanDays) {
  */
 function renderSummaryTable(series = []) {
   const table = document.getElementById('ts-table');
-  const f = state.ts.parameter === 'W' ? fmtCm : fmtTemp;
+  const f = { W: fmtCm, WT: fmtTemp, N: fmtMmDay }[state.ts.parameter];
   const head = el('thead', {}, el('tr', {},
     ['Fluss', 'Tiefster Wert', 'Mittel', 'Höchster Wert', 'Tage mit Wert'].map((h) => el('th', { scope: 'col' }, h))));
   const body = el('tbody', {}, series.map((s) => {
@@ -1748,12 +2201,17 @@ function setupResize() {
   const redraw = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
-      renderStripes();
-      drawSparklines();
-      renderDraw();
-      renderMultiples();
-      renderZoom();
-      renderTimeseries();
+      if (PAGE === 'story') {
+        renderStripes();
+        renderDraw();
+        drawRainChart();
+      } else {
+        drawSparklines();
+        renderMultiples();
+        renderRainMultiples();
+        renderZoom();
+        renderTimeseries();
+      }
     });
   };
   window.addEventListener('resize', () => {

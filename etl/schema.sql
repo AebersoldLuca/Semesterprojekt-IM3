@@ -1,17 +1,21 @@
 -- =====================================================================
 -- Der Bauplan unserer Datenbank: «Wenn Flüsse Durst haben»
 --
--- Eine Datenbank ist wie ein Ordner mit mehreren Tabellen. Unsere hat vier:
+-- Eine Datenbank ist wie ein Ordner mit mehreren Tabellen. Unsere hat sechs:
 --
---   parameters    Was wir messen: Wasserstand (W) und Wassertemperatur (WT)
---   stations      Die sechs Messstationen an den Flüssen
---   observations  Die Messwerte, ein Wert pro Zeile (rund 30 000 Zeilen)
---   import_runs   Ein Protokoll: Wann wurde importiert, hat es geklappt?
+--   parameters        Was wir messen: Wasserstand (W) und Wassertemperatur (WT)
+--   stations          Die sechs Messstationen an den Flüssen (vom BAFU)
+--   observations      Die Messwerte, ein Wert pro Zeile (rund 30 000 Zeilen)
+--   import_runs       Ein Protokoll: Wann wurde importiert, hat es geklappt?
+--   weather_stations  Die sechs Wetterstationen (von MeteoSchweiz)
+--   precipitation     Der Regen: wie viele Millimeter pro Tag gefallen sind
 --
--- Diese Datei wird nur einmal ausgeführt, um die leeren Tabellen anzulegen,
+-- Diese Datei wird einmal ausgeführt, um die leeren Tabellen anzulegen,
 -- zum Beispiel in phpMyAdmin im Reiter «SQL». Gefüllt werden die Tabellen
 -- danach automatisch von etl/load.php.
 -- Man kann die Datei gefahrlos mehrmals ausführen: Was es schon gibt, bleibt.
+-- Deshalb reicht es auch, sie nochmals auszuführen, wenn neue Tabellen
+-- dazukommen (so wie die zwei Tabellen für den Regen).
 -- =====================================================================
 
 -- Damit Umlaute und «°C» richtig gespeichert werden.
@@ -71,7 +75,7 @@ CREATE TABLE IF NOT EXISTS import_runs (
     finished_at     DATETIME     NULL,               -- Ende (Weltzeit)
     status          ENUM('running','success','partial','failed') NOT NULL DEFAULT 'running', -- läuft / geklappt / teilweise / fehlgeschlagen
     mode            VARCHAR(20)  NOT NULL,           -- 'incremental' = nur Neues, 'full' = alles
-    aggregation     VARCHAR(40)  NOT NULL,           -- welche Werte: 'data_1day_mean' = Tagesmittel
+    aggregation     VARCHAR(40)  NOT NULL,           -- welche Werte: 'data_1day_mean' = Tagesmittel BAFU, 'meteo_rka150d0' = Regen MeteoSchweiz
     window_from     DATE         NULL,               -- abgefragter Zeitraum: von …
     window_to       DATE         NULL,               -- … bis
     api_requests    INT UNSIGNED NOT NULL DEFAULT 0, -- so oft beim BAFU gefragt
@@ -132,3 +136,53 @@ ON DUPLICATE KEY UPDATE
     label = VALUES(label),
     unit = VALUES(unit),
     description = VALUES(description);
+
+-- ---------------------------------------------------------------------
+-- Tabelle 5: Die Wetterstationen von MeteoSchweiz
+--
+-- Ob ein Fluss tief steht, hängt stark davon ab, wie viel es geregnet hat.
+-- Deshalb gehört zu jedem unserer sechs Flüsse eine Wetterstation, die im
+-- Gebiet dieses Flusses liegt, zum Beispiel St. Gallen für die Thur.
+--
+-- abbr               Das Kürzel bei MeteoSchweiz, z.B. 'STG' für St. Gallen
+-- river_station_no   Zu welchem Fluss sie gehört: die Nummer der BAFU-Station
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS weather_stations (
+    id               INT UNSIGNED  NOT NULL AUTO_INCREMENT, -- interne Nummer
+    abbr             VARCHAR(5)    NOT NULL,           -- Kürzel bei MeteoSchweiz
+    name             VARCHAR(120)  NOT NULL,           -- Name, z.B. 'St. Gallen'
+    river_station_no VARCHAR(10)   NOT NULL,           -- gehört zu dieser Flussstation, z.B. '2044' (Thur)
+    latitude         DECIMAL(10,7) NULL,               -- Koordinaten auf der Weltkarte
+    longitude        DECIMAL(10,7) NULL,
+    elevation        DECIMAL(7,2)  NULL,               -- Höhe über Meer
+    created_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_weather_abbr (abbr),                 -- jedes Kürzel nur einmal
+    KEY idx_weather_river (river_station_no)           -- macht die Suche «Regen zu diesem Fluss» schnell
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Tabelle 6: Der Regen
+--
+-- Jede Zeile sagt: An dieser Wetterstation sind an diesem Tag so viele
+-- Millimeter Regen (oder Schnee, geschmolzen gemessen) gefallen.
+-- 1 Millimeter heisst: 1 Liter Wasser auf jeden Quadratmeter Boden.
+--
+-- Auch hier gibt es jeden Tag pro Station nur einmal. Kommt ein Wert
+-- nochmals, wird er überschrieben statt verdoppelt.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS precipitation (
+    id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    weather_station_id INT UNSIGNED    NOT NULL,       -- welche Wetterstation (interne Nummer)
+    obs_date           DATE            NOT NULL,       -- welcher Tag
+    precipitation_mm   DECIMAL(6,1)    NOT NULL,       -- Regen an diesem Tag in Millimetern, z.B. 12.4
+    import_run_id      INT UNSIGNED    NULL,           -- welcher Import ihn zuletzt geändert hat
+    created_at         TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_precip_station_date (weather_station_id, obs_date), -- keine doppelten Tage
+    KEY idx_precip_date (obs_date),                    -- macht die Suche nach Datum schnell
+    CONSTRAINT fk_precip_station FOREIGN KEY (weather_station_id) REFERENCES weather_stations (id) ON DELETE CASCADE,
+    CONSTRAINT fk_precip_import  FOREIGN KEY (import_run_id)      REFERENCES import_runs (id)      ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

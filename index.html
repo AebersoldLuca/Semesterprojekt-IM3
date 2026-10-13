@@ -4,18 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wenn Flüsse Durst haben · Wassertemperatur und Wasserstand 2022 und 2026</title>
-  <meta name="description" content="Eine DataStory mit Messdaten des BAFU: Waren die Flüsse im Mittelland 2026 wärmer und führten sie weniger Wasser als im Hitzesommer 2022?">
+  <meta name="description" content="Eine DataStory mit Messdaten von BAFU und MeteoSchweiz: Waren die Flüsse im Mittelland 2026 wärmer und führten sie weniger Wasser als im Hitzesommer 2022?">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#07090c">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090c'/%3E%3Crect x='6' y='18' width='4' height='8' fill='%233a7bd5'/%3E%3Crect x='14' y='12' width='4' height='14' fill='%23ece9e2'/%3E%3Crect x='22' y='6' width='4' height='20' fill='%23ff4d1c'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
-<body>
+<body data-page="story">
 
-<a class="skip-link" href="#vergleich">Zur interaktiven Grafik springen</a>
+<a class="skip-link" href="#schaetzen">Zur ersten Grafik springen</a>
 <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
 
 <!-- =============================================================
@@ -63,7 +63,7 @@
      die echte Kurve auf.
      ============================================================= -->
 <section class="section section--wide" id="schaetzen" aria-labelledby="schaetzen-title">
-  <p class="section__label"><span>00</span>Mitmachen</p>
+  <p class="section__label"><span>01</span>Mitmachen</p>
   <div class="section__body">
     <h2 id="schaetzen-title">Schätz mal!</h2>
     <p class="section__lead">
@@ -84,13 +84,17 @@
 </section>
 
 <!-- =============================================================
-     2) DIE ZAHLEN
-     Drei grosse Zahlen. Sie werden aus den Daten berechnet.
+     DIE ZAHLEN
+     Vier grosse Zahlen. Sie werden aus den Daten berechnet.
      ============================================================= -->
 <section class="section" id="zahlen" aria-labelledby="zahlen-title">
-  <p class="section__label"><span>01</span>Die Zahlen</p>
+  <p class="section__label"><span>02</span>Die Zahlen</p>
   <div class="section__body">
     <h2 id="zahlen-title">Was 2026 anders war</h2>
+    <p class="section__intro">
+      Der Sommer 2022 war laut MeteoSchweiz der zweitwärmste seit Messbeginn 1864. Flüsse wie Limmat und Rhein
+      wurden über 25 Grad warm und führten extremes Niedrigwasser, Fische starben. Dieser Sommer ist der Massstab.
+    </p>
     <p class="section__lead" data-slot="stats-lead">
       Verglichen wird in beiden Jahren derselbe Zeitraum, vom 1. Januar bis zum letzten Messtag.
     </p>
@@ -101,91 +105,40 @@
 </section>
 
 <!-- =============================================================
-     3) KONTEXT
-     Warum 2022 der Massstab ist, Begriffe und die sechs Messstellen.
+     REGEN UND PEGEL
+     Warum stehen die Flüsse tief? Links zwei Messbecher mit dem Regen
+     beider Jahre, rechts der Regen pro Woche und der Pegel darunter.
      ============================================================= -->
-<section class="section" id="kontext" aria-labelledby="kontext-title">
-  <p class="section__label"><span>02</span>Kontext</p>
+<section class="section section--wide" id="regen" aria-labelledby="regen-title">
+  <p class="section__label"><span>03</span>Regen</p>
   <div class="section__body">
-    <h2 id="kontext-title">Der Massstab heisst 2022</h2>
-    <div class="columns">
-      <p>
-        Der Sommer 2022 war laut MeteoSchweiz der zweitwärmste seit Messbeginn 1864. Nur 2003 war heisser.
-        Das Bundesamt für Umwelt verzeichnete in Seen und Flüssen Wassertemperaturen von 25 Grad und mehr,
-        und grosse Flüsse wie Limmat und Rhein führten extremes Niedrigwasser.
-      </p>
-      <p>
-        Wenn 2026 an denselben Messstationen noch wärmer und noch tiefer ist, dann ist das mehr als ein
-        heisser Sommer. Die These betrifft das Mittelland: Limmat, Thur und Rhein. Drei Flüsse aus den Alpen
-        laufen als Kontrollgruppe mit, weil Schmelzwasser anders auf Hitze reagiert.
-      </p>
-    </div>
-    <p class="source-line">
-      Quellen:
-      <a href="https://www.meteoschweiz.admin.ch/service-und-publikationen/publikationen/berichte-und-bulletins/2022/klimabulletin-sommer-2022.html" rel="noopener">MeteoSchweiz, Klimabulletin Sommer 2022</a>,
-      <a href="https://www.bafu.admin.ch/de/hitze-und-trockenheit-im-sommer-2022" rel="noopener">BAFU, Hitze und Trockenheit im Sommer 2022</a>
+    <h2 id="regen-title" data-slot="rain-title">Regen und Pegel</h2>
+    <p class="section__lead" data-slot="rain-lead">
+      Wie viel es regnet, bestimmt, wie viel Wasser ein Fluss führt.
     </p>
 
-    <dl class="glossary">
-      <div>
-        <dt>Wassertemperatur</dt>
-        <dd>Tagesmittel in °C. Warmes Wasser löst weniger Sauerstoff. 2022 kam es laut BAFU zu Fischsterben, vor allem bei Bachforellen und Äschen.</dd>
+    <div class="toolbar" role="group" aria-label="Einstellungen Regen und Pegel">
+      <div class="segmented" role="radiogroup" aria-label="Fluss" id="rain-river-switch"></div>
+      <div class="segmented" role="radiogroup" aria-label="Jahr" id="rain-year-switch">
+        <button type="button" role="radio" aria-checked="true"  data-year="2026">2026</button>
+        <button type="button" role="radio" aria-checked="false" data-year="2022">2022</button>
       </div>
-      <div>
-        <dt>Wasserstand</dt>
-        <dd>Höhe der Wasseroberfläche am Pegel. Weil jede Station anders hoch liegt, zeigen wir die Abweichung vom mittleren Pegel der Station in Zentimetern. Tiefer heisst in der Regel: weniger Wasser.</dd>
-      </div>
-      <div>
-        <dt>Tagesmittel</dt>
-        <dd>Durchschnitt aller Messungen eines Tages, so wie ihn das BAFU veröffentlicht. Gespeichert seit dem 1. Januar 2020.</dd>
-      </div>
-    </dl>
-
-    <h3 class="subhead">Die sechs Messstellen</h3>
-    <div id="station-groups" aria-live="polite">
-      <p class="muted">Stationen werden geladen …</p>
+      <div class="diff-legend" id="rain-legend" aria-hidden="true"></div>
     </div>
+
+    <div class="rain">
+      <div class="gauges" id="rain-gauges" aria-live="polite"></div>
+      <div class="rain__main">
+        <div class="chart chart--rain" id="rain-chart" tabindex="0"
+             aria-label="Regen pro Woche und Pegel des Flusses. Pfeiltasten wechseln den Tag."></div>
+      </div>
+    </div>
+    <p class="note" id="rain-note"></p>
   </div>
 </section>
 
 <!-- =============================================================
-     4) JAHR GEGEN JAHR
-     Eine Grafik pro Fluss: 2022 grau, 2026 weiss, der Unterschied farbig.
-     ============================================================= -->
-<section class="section section--wide" id="jahresvergleich" aria-labelledby="jahresvergleich-title">
-  <p class="section__label"><span>03</span>Vergleich</p>
-  <div class="section__body">
-    <h2 id="jahresvergleich-title">Wer hat mehr geschwitzt?</h2>
-    <p class="section__lead">
-      Grau ist 2022, weiss ist 2026. Wo 2026 wärmer war oder tiefer lag, ist die Fläche dazwischen rot.
-      Blau heisst das Gegenteil. Mit der Maus oder dem Finger lassen sich einzelne Tage ablesen.
-    </p>
-
-    <div class="toolbar" role="group" aria-label="Einstellungen Jahresvergleich">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="cmp-param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Temperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
-      <div class="segmented" role="radiogroup" aria-label="Darstellung" id="cmp-smooth-switch">
-        <button type="button" role="radio" aria-checked="true"  data-smooth="7">7-Tage-Mittel</button>
-        <button type="button" role="radio" aria-checked="false" data-smooth="1">Tageswerte</button>
-      </div>
-      <div class="diff-legend" id="cmp-legend" aria-hidden="true"></div>
-    </div>
-
-    <p class="chart-title">
-      <span id="cmp-title">Wassertemperatur</span>
-      <span class="chart-title__unit" id="cmp-unit">in °C</span>
-    </p>
-    <div class="multiples" id="cmp-multiples">
-      <p class="muted">Vergleich wird geladen …</p>
-    </div>
-    <p class="note" id="cmp-note"></p>
-  </div>
-</section>
-
-<!-- =============================================================
-     5) URTEIL
+     URTEIL
      Zuerst selbst tippen, dann zeigt die Seite das Ergebnis.
      ============================================================= -->
 <section class="section" id="urteil" aria-labelledby="urteil-title">
@@ -213,91 +166,23 @@
 </section>
 
 <!-- =============================================================
-     6) SELBST NACHSCHAUEN
-     Alle Daten seit 2020: Flüsse, Messgrösse und Zeitraum frei wählbar.
+     WEITER ZU DEN DATEN
+     Wer mehr wissen will, findet auf daten.html alle Grafiken.
      ============================================================= -->
-<section class="section section--wide" id="vergleich" aria-labelledby="vergleich-title">
-  <p class="section__label"><span>05</span>Explorer</p>
+<section class="section" id="mehr" aria-labelledby="mehr-title">
+  <p class="section__label"><span>→</span>Weiter</p>
   <div class="section__body">
-    <h2 id="vergleich-title">Selbst nachschauen</h2>
-    <p class="section__lead">Alle Tagesmittel seit 2020. Messgrösse, Zeitraum und Flüsse sind frei wählbar.</p>
-
-    <div class="toolbar" role="group" aria-label="Einstellungen der Grafik">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Temperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
-      <div class="segmented segmented--range" role="radiogroup" aria-label="Zeitraum" id="range-switch">
-        <button type="button" role="radio" aria-checked="false" data-days="7">7T</button>
-        <button type="button" role="radio" aria-checked="false" data-days="30">30T</button>
-        <button type="button" role="radio" aria-checked="false" data-days="91">3M</button>
-        <button type="button" role="radio" aria-checked="true"  data-days="365">1J</button>
-        <button type="button" role="radio" aria-checked="false" data-days="1096">3J</button>
-        <button type="button" role="radio" aria-checked="false" data-days="all">Alle</button>
-      </div>
-    </div>
-
-    <div class="legend" id="ts-legend" role="group" aria-label="Flüsse ein- und ausblenden"></div>
-
-    <p class="chart-title">
-      <span id="ts-title">Wassertemperatur, Tagesmittel</span>
-      <span class="chart-title__unit" id="ts-unit">in °C</span>
-    </p>
-
-    <div class="chart" id="ts-chart" tabindex="0"
-         aria-label="Liniendiagramm. Mit den Pfeiltasten links und rechts durch die Tage navigieren.">
-      <div class="chart__status" id="ts-status" hidden></div>
-    </div>
-
-    <p class="note" id="ts-note"></p>
-
-    <details class="table-view">
-      <summary>Kennzahlen als Tabelle</summary>
-      <div class="table-scroll"><table id="ts-table"></table></div>
-    </details>
-  </div>
-</section>
-
-<!-- =============================================================
-     7) DATEN UND METHODE
-     Woher die Daten kommen und wie sie auf diese Seite gelangen.
-     ============================================================= -->
-<section class="section" id="methodik" aria-labelledby="methodik-title">
-  <p class="section__label"><span>06</span>Methode</p>
-  <div class="section__body">
-    <h2 id="methodik-title">Daten und Methode</h2>
-
-    <p class="section__lead">So kommen die Daten vom Bund auf diese Seite. Klick auf einen Schritt.</p>
-    <div class="pipeline" id="pipeline" role="tablist" aria-label="Datenfluss: Schritt wählen">
-      <button type="button" class="pipeline__step" role="tab" data-step="api" aria-selected="true" aria-controls="step-panel"><span class="pipeline__num">01</span><span class="pipeline__name">BAFU-API</span><small>GraphQL</small></button>
-      <button type="button" class="pipeline__step" role="tab" data-step="extract" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">02</span><span class="pipeline__name">Extract</span><small>PHP</small></button>
-      <button type="button" class="pipeline__step" role="tab" data-step="transform" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">03</span><span class="pipeline__name">Transform</span><small>prüfen</small></button>
-      <button type="button" class="pipeline__step" role="tab" data-step="load" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">04</span><span class="pipeline__name">Load</span><small>MySQL</small></button>
-      <button type="button" class="pipeline__step" role="tab" data-step="unload" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">05</span><span class="pipeline__name">Unload</span><small>JSON</small></button>
-      <button type="button" class="pipeline__step" role="tab" data-step="story" aria-selected="false" aria-controls="step-panel" tabindex="-1"><span class="pipeline__num">06</span><span class="pipeline__name">Story</span><small>D3</small></button>
-    </div>
-    <div class="step-panel" id="step-panel" role="tabpanel" aria-live="polite"></div>
-
-    <dl class="facts">
-      <div><dt>Quelle</dt><dd>Bundesamt für Umwelt BAFU, <a href="https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations" rel="noopener">Hydrologische Beobachtungen</a></dd></div>
-      <div><dt>Plattform</dt><dd><a href="https://api.data-platform.cloud.bafu.admin.ch/" rel="noopener">api.data-platform.cloud.bafu.admin.ch</a></dd></div>
-      <div><dt>Aggregation</dt><dd>Tagesmittel, <code>data_1day_mean</code></dd></div>
-      <div><dt>Zeitraum</dt><dd data-slot="fact-range">ab 1. Januar 2020</dd></div>
-      <div><dt>Aktualisierung</dt><dd>täglich per Cronjob</dd></div>
-      <div><dt>Geprüft 2026</dt><dd data-slot="fact-checked">–</dd></div>
-      <div><dt>Lizenz</dt><dd>Freie Nutzung, Quellenangabe Pflicht (opendata.swiss)</dd></div>
-    </dl>
-
-    <ul class="method-notes">
-      <li>Ein PHP-Script lädt die Tagesmittel jeden Morgen von der BAFU-API und speichert sie in einer eigenen MySQL-Datenbank. Die Website liest nur aus dieser Datenbank. Fällt die BAFU-API aus, bleibt die Seite mit den gespeicherten Daten online.</li>
-      <li>Beide Jahre werden über denselben Zeitraum verglichen: 1. Januar bis zum letzten Messtag 2026. Das 7-Tage-Mittel in den Grafiken ist der Schnitt eines Tages und der sechs Tage davor. Alle Kennzahlen rechnen mit den ungeglätteten Tagesmitteln.</li>
-      <li>Der Wasserstand ist die Abweichung vom mittleren Pegel der Station seit 2020.</li>
-      <li>Nichts wird geschätzt oder aufgefüllt. Unplausible Werte werden verworfen, fehlende Tage bleiben Lücken.</li>
-      <li>Das BAFU prüft Messwerte nachträglich. Ein grosser Teil der Werte von 2026 ist noch ungeprüft und kann sich ändern. Deshalb lädt jeder Import die letzten 60 Tage neu.</li>
-      <li>Die sechs Messstationen wurden nach der Datenlage ausgewählt (Wasserstand und Temperatur lückenlos seit 2020, verschiedene Landschaften), bevor die These feststand. So soll vermieden werden, dass nur passende Flüsse im Vergleich landen.</li>
-      <li>Der Vergleich stützt sich auf ein einziges Referenzjahr. Gegenüber anderen Jahren seit 2020 kann der Unterschied grösser oder kleiner ausfallen.</li>
-      <li>2026 ist noch nicht zu Ende, und zwei Jahre sind kein Trend. Die Daten zeigen, dass sich die Jahre unterscheiden. Warum, zeigen sie nicht.</li>
-    </ul>
+    <a class="more" href="daten.html">
+      <span class="more__kicker">Für alle, die es genau wissen wollen</span>
+      <span class="more__title" id="mehr-title">Alle Daten ansehen</span>
+      <span class="more__list">
+        <span>Alle sechs Flüsse im Jahresvergleich</span>
+        <span>Regen und Pegel für jeden Fluss</span>
+        <span>Jeder Messwert seit 2020 zum Selbst-Erkunden</span>
+        <span>Wie die Daten auf diese Seite kommen</span>
+      </span>
+      <span class="btn btn--primary more__btn">Zu den Daten →</span>
+    </a>
   </div>
 </section>
 
@@ -305,39 +190,10 @@
 
 <footer class="footer">
   <span>Studienprojekt, Interaktive Medien 3, FHGR</span>
-  <span>Daten: <a href="https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations" rel="noopener">BAFU</a></span>
+  <span>Daten: <a href="https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations" rel="noopener">BAFU</a>, <a href="https://opendatadocs.meteoswiss.ch/" rel="noopener">MeteoSchweiz</a></span>
+  <a href="daten.html">Alle Daten →</a>
   <a href="#top">Nach oben ↑</a>
 </footer>
-
-<!-- Die grosse Ansicht eines Flusses (öffnet sich mit «Gross ↗») -->
-<dialog class="zoom" id="zoom" aria-labelledby="zoom-title">
-  <!-- Detailansicht eines Flusses: Linien 2022/2026 und eingefärbte Differenz -->
-  <div class="zoom__inner">
-    <div class="zoom__head">
-      <h2 class="zoom__title" id="zoom-title">Fluss</h2>
-      <div class="zoom__actions">
-        <button type="button" class="zoom__btn" id="zoom-prev" aria-label="Vorheriger Fluss">←</button>
-        <button type="button" class="zoom__btn" id="zoom-next" aria-label="Nächster Fluss">→</button>
-        <button type="button" class="zoom__btn" id="zoom-fullscreen" aria-pressed="false">Vollbild</button>
-        <button type="button" class="zoom__btn" id="zoom-close" aria-label="Schliessen">Schliessen</button>
-      </div>
-    </div>
-    <div class="toolbar">
-      <div class="segmented" role="radiogroup" aria-label="Messgrösse" id="zoom-param-switch">
-        <button type="button" role="radio" aria-checked="true"  data-param="WT">Temperatur</button>
-        <button type="button" role="radio" aria-checked="false" data-param="W">Wasserstand</button>
-      </div>
-      <div class="segmented" role="radiogroup" aria-label="Darstellung" id="zoom-smooth-switch">
-        <button type="button" role="radio" aria-checked="true"  data-smooth="7">7-Tage-Mittel</button>
-        <button type="button" role="radio" aria-checked="false" data-smooth="1">Tageswerte</button>
-      </div>
-      <div class="diff-legend" id="zoom-legend" aria-hidden="true"></div>
-    </div>
-    <p class="multiple__sub" id="zoom-sub"></p>
-    <div class="chart chart--zoom" id="zoom-chart" tabindex="0" aria-label="Vergrösserte Grafik. Pfeiltasten wechseln den Tag."></div>
-    <p class="note" id="zoom-note"></p>
-  </div>
-</dialog>
 
 <button type="button" class="focus-pill" id="focus-pill" hidden></button>
 <div class="toast" id="toast" role="alert" hidden></div>
@@ -345,6 +201,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=17" defer></script>
+<script src="script.js?v=18" defer></script>
 </body>
 </html>

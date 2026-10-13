@@ -6,7 +6,10 @@
  * ein automatischer Zeitplan (ein «Cronjob») sie auf. Dann passiert:
  *
  *   load.php fragt transform.php → transform.php fragt extract.php
- *   → extract.php holt die Daten beim BAFU
+ *   → extract.php holt die Flussdaten beim BAFU
+ *
+ *   load.php fragt transform_meteo.php → transform_meteo.php fragt extract_meteo.php
+ *   → extract_meteo.php holt den Regen bei MeteoSchweiz
  *
  * Danach speichert load.php alles in der Datenbank.
  *
@@ -22,6 +25,7 @@
  *   3. Die sechs Stationen speichern
  *   4. Die Messwerte speichern: neue dazu, korrigierte überschreiben
  *   5. Notieren, wie der Import gelaufen ist
+ *   6. Dasselbe nochmals für den Regen von MeteoSchweiz
  *
  * Diese Datei gibt nichts an eine andere Datei zurück. Ihr Ergebnis steht
  * danach in der Datenbank.
@@ -317,7 +321,154 @@ $pdo->prepare(
 $pdo->exec('DELETE FROM import_runs WHERE started_at < UTC_TIMESTAMP() - INTERVAL 365 DAY');
 
 // ---------------------------------------------------------------------------
-// 10. Kontrolle: Hat alles geklappt?
+// 10. Der Regen von MeteoSchweiz
+// ---------------------------------------------------------------------------
+//
+// Jetzt dasselbe für den Regen, in fünf kurzen Schritten:
+//   a) ab welchem Tag holen?   b) im Protokoll notieren
+//   c) Daten holen lassen      d) Wetterstationen speichern
+//   e) Regenwerte speichern
+//
+// Klappt hier etwas nicht, ist das kein Weltuntergang: Die Flussdaten von
+// oben sind schon gespeichert. Wir notieren den Fehler und machen weiter.
+
+echo "\nRegen von MeteoSchweiz:\n";
+
+// Für den Regen gibt es nochmals bis zu 5 Minuten Zeit (die Uhr startet neu).
+if (PHP_SAPI !== 'cli') {
+    set_time_limit(300);
+}
+
+// a) Ab welchem Tag holen? Wie oben: ab dem letzten gespeicherten Tag minus
+//    60 Tage, denn auch MeteoSchweiz korrigiert manchmal nachträglich.
+//    Ist noch kein Regen gespeichert, holen wir alles ab dem 1. Januar 2020.
+$latestRainDays = $pdo->query(
+    'SELECT MAX(obs_date) FROM precipitation GROUP BY weather_station_id'
+)->fetchAll(PDO::FETCH_COLUMN);
+
+if ($fullImport || count($latestRainDays) < 6) {
+    $meteoStartDate = $firstDay;
+} else {
+    $meteoStartDate = date('Y-m-d', strtotime(min($latestRainDays) . " -{$revisionDays} days"));
+    $meteoStartDate = max($firstDay, $meteoStartDate);
+}
+
+echo "Lade ab {$meteoStartDate}.\n";
+
+// b) Im Protokoll notieren: «Regen-Import gestartet».
+$pdo->prepare(
+    "INSERT INTO import_runs (started_at, status, mode, aggregation, window_from, window_to)
+     VALUES (UTC_TIMESTAMP(), 'running', :mode, 'meteo_rka150d0', :window_from, CURDATE())"
+)->execute([
+    'mode' => $fullImport ? 'full' : 'incremental',
+    'window_from' => $meteoStartDate,
+]);
+
+$meteoRunId = (int) $pdo->lastInsertId();
+
+try {
+    // c) Die geprüften Regendaten holen lassen.
+    $meteo = include __DIR__ . '/transform_meteo.php';
+
+    // d) Die Wetterstationen speichern: neu anlegen oder auffrischen.
+    //    «ON DUPLICATE KEY UPDATE» erledigt beides in einem Schritt.
+    $saveWeatherStation = $pdo->prepare(
+        'INSERT INTO weather_stations (abbr, name, river_station_no, latitude, longitude, elevation)
+         VALUES (:abbr, :name, :river_station_no, :latitude, :longitude, :elevation)
+         ON DUPLICATE KEY UPDATE
+            name = VALUES(name), river_station_no = VALUES(river_station_no),
+            latitude = VALUES(latitude), longitude = VALUES(longitude), elevation = VALUES(elevation)'
+    );
+    $findWeatherStation = $pdo->prepare('SELECT id FROM weather_stations WHERE abbr = ?');
+
+    // Ein Merkzettel: Kürzel → interne Nummer, z.B. 'STG' → 2.
+    $weatherIds = [];
+
+    foreach ($meteo['stations'] as $abbr => $weatherStation) {
+        $saveWeatherStation->execute($weatherStation);
+        $findWeatherStation->execute([$abbr]);
+        $weatherIds[$abbr] = (int) $findWeatherStation->fetchColumn();
+    }
+
+    // e) Die Regenwerte speichern, wieder alles oder nichts (Transaktion).
+    //    Gibt es den Tag schon, wird der Wert überschrieben.
+    $insertRain = $pdo->prepare(
+        'INSERT INTO precipitation (weather_station_id, obs_date, precipitation_mm, import_run_id)
+         VALUES (:weather_station_id, :obs_date, :precipitation_mm, :import_run_id)
+         ON DUPLICATE KEY UPDATE
+            updated_at       = IF(precipitation_mm <=> VALUES(precipitation_mm), updated_at, CURRENT_TIMESTAMP),
+            import_run_id    = IF(precipitation_mm <=> VALUES(precipitation_mm), import_run_id, VALUES(import_run_id)),
+            precipitation_mm = VALUES(precipitation_mm)'
+    );
+
+    $rainInserted = 0;
+    $rainUpdated = 0;
+    $rainUnchanged = 0;
+
+    $pdo->beginTransaction();
+
+    foreach ($meteo['data'] as $row) {
+        $insertRain->execute([
+            'weather_station_id' => $weatherIds[$row['station_abbr']],
+            'obs_date' => $row['obs_date'],
+            'precipitation_mm' => $row['precipitation_mm'],
+            'import_run_id' => $meteoRunId,
+        ]);
+
+        // Wieder: 1 = neu, 2 = geändert, 0 = gleich.
+        $changed = $insertRain->rowCount();
+
+        if ($changed === 1) {
+            $rainInserted++;
+        } elseif ($changed === 2) {
+            $rainUpdated++;
+        } else {
+            $rainUnchanged++;
+        }
+    }
+
+    $pdo->commit();
+
+    // Im Protokoll notieren: «Regen-Import fertig».
+    $meteoFailed = $meteo['extract_audit']['failed_files'];
+    $meteoStatus = $meteoFailed === 0 ? 'success' : 'partial';
+
+    $pdo->prepare(
+        'UPDATE import_runs
+         SET finished_at = UTC_TIMESTAMP(), status = :status,
+             api_requests = :api_requests, rows_received = :rows_received,
+             rows_inserted = :rows_inserted, rows_updated = :rows_updated,
+             rows_unchanged = :rows_unchanged, rows_rejected = :rows_rejected, message = :message
+         WHERE id = :id'
+    )->execute([
+        'status' => $meteoStatus,
+        'api_requests' => $meteo['extract_audit']['api_requests'],
+        'rows_received' => $meteo['audit']['input_rows'],
+        'rows_inserted' => $rainInserted,
+        'rows_updated' => $rainUpdated,
+        'rows_unchanged' => $rainUnchanged,
+        'rows_rejected' => $meteo['audit']['input_rows'] - $meteo['audit']['output_rows'],
+        'message' => $meteoFailed > 0 ? "{$meteoFailed} Dateien fehlgeschlagen." : null,
+        'id' => $meteoRunId,
+    ]);
+
+    echo "{$rainInserted} neu, {$rainUpdated} geändert, {$rainUnchanged} unverändert. Status: {$meteoStatus}.\n";
+} catch (Throwable $e) {
+    // Etwas ging schief: halb Gespeichertes rückgängig machen und notieren.
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
+        ->execute([mb_substr($e->getMessage(), 0, 1000), $meteoRunId]);
+
+    echo 'Regen-Import fehlgeschlagen: ' . $e->getMessage() . "\nDie Flussdaten sind trotzdem gespeichert.\n";
+}
+
+echo "\n";
+
+// ---------------------------------------------------------------------------
+// 11. Kontrolle: Hat alles geklappt?
 // ---------------------------------------------------------------------------
 //
 // Wir lesen die neuesten Werte wieder aus der Datenbank und schreiben sie in
@@ -338,6 +489,21 @@ $latestValues = $pdo->query(
 foreach ($latestValues->fetchAll() as $value) {
     echo '  ' . $value['river_name'] . "\t" . $value['obs_date'] . "\t"
         . $value['parameter_code'] . "\t" . $value['value'] . "\n";
+}
+
+// Der neuste Regenwert pro Wetterstation.
+echo "\nNeuster Regen:\n";
+
+$latestRain = $pdo->query(
+    'SELECT w.name, p.obs_date, p.precipitation_mm
+     FROM precipitation AS p
+     JOIN weather_stations AS w ON w.id = p.weather_station_id
+     WHERE p.obs_date = (SELECT MAX(obs_date) FROM precipitation WHERE weather_station_id = w.id)
+     ORDER BY w.name'
+);
+
+foreach ($latestRain->fetchAll() as $value) {
+    echo '  ' . $value['name'] . "\t" . $value['obs_date'] . "\t" . $value['precipitation_mm'] . " mm\n";
 }
 
 // Zum Schluss: Welche Werte hat transform.php weggelassen, und warum?

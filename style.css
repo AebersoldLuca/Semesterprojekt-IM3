@@ -8,9 +8,13 @@
      eine gleichmässige für Zahlen und Achsen
    - nur eine auffällige Farbe, Orange. Sie bedeutet immer «wärmer».
 
+   Die Datei gilt für beide Seiten: index.html (die Story) und
+   daten.html (alle Daten).
+
    Inhalt: 1) Farben und Grundwerte  2) Grundlagen  3) Seitenanfang
            4) Aufbau der Abschnitte  5) Inhalte  6) Knöpfe
-           7) Grafiken  8) Grosse Ansicht  9) Anpassungen fürs Handy
+           7) Grafiken  7b) Regen und Pegel  8) Grosse Ansicht
+           9) Anpassungen fürs Handy
    ================================================================== */
 
 /* ---------- 1) Farben und Grundwerte ----------------------------- */
@@ -31,6 +35,7 @@
   --signal:    #ff4d1c;   /* Orange: «wärmer», spricht für die These */
   --cool:      #4a8bd6;   /* Blau: «kühler», spricht gegen die These */
   --year-ref:  #74808c;   /* Vergleichsjahr 2022 */
+  --rain:      #6fc2f0;   /* Hellblau: Regen */
 
   /* Jeder Fluss hat seine eigene Farbe, überall auf der Seite gleich.
      Die Farben sind so gewählt, dass man sie auch mit einer
@@ -96,6 +101,17 @@ em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spa
   font-family: var(--sans); font-size: .86rem; letter-spacing: 0; color: var(--ink-2);
   padding: 18px 0 14px; border-bottom: 1px solid var(--rule);
 }
+.topbar a { text-decoration: none; }
+.topbar a:hover { color: var(--signal); }
+
+/* Der Kopf der Datenseite: kleiner als auf der Story-Seite */
+.page-head { max-width: var(--max); margin: 0 auto; padding: 0 var(--pad) clamp(32px, 6vh, 64px); }
+.page-head__title { font-size: clamp(3rem, 8vw, 7.5rem); line-height: .9; letter-spacing: -0.055em; font-weight: 700; margin: clamp(48px, 10vh, 120px) 0 24px; }
+.page-head__title em { color: var(--signal); }
+.page-head__lead { font-family: var(--serif); font-size: clamp(1.3rem, 2.2vw, 1.8rem); line-height: 1.25; max-width: 40rem; color: var(--ink); }
+.page-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.page-nav a { text-decoration: none; font-size: .9rem; padding: 7px 14px; border: 1px solid var(--rule-2); border-radius: 999px; color: var(--ink-2); transition: border-color .15s, color .15s; }
+.page-nav a:hover { border-color: var(--ink); color: var(--ink); }
 
 .hero__grid {
   flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: clamp(36px, 7vh, 80px);
@@ -174,6 +190,9 @@ em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spa
 .section__label span { color: var(--signal); }
 .section__body { min-width: 0; }
 .section__lead { font-size: 1.15rem; line-height: 1.5; color: var(--ink-2); max-width: 44rem; margin-bottom: 2.2em; }
+.section__lead strong { color: var(--ink); font-weight: 600; }
+/* Ein kurzer Einstieg vor der Einleitung, etwas grösser und heller */
+.section__intro { font-family: var(--serif); font-size: clamp(1.3rem, 2vw, 1.6rem); line-height: 1.3; max-width: 40rem; margin-bottom: 1em; }
 .subhead {
   font-family: var(--sans); font-weight: 500; font-size: .86rem; letter-spacing: 0;
   color: var(--ink-2); margin: 4rem 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--rule-2);
@@ -191,8 +210,9 @@ em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spa
 
 /* ---------- 5) Inhalte der Abschnitte ---------------------------- */
 
-/* Die drei grossen Zahlen, als Karten nebeneinander */
-.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+/* Die vier grossen Zahlen, als Karten in zwei Reihen */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.stat--rain .stat__icon { color: var(--rain); }
 .stat { padding: 20px 22px 22px; background: var(--card); border-radius: var(--radius); }
 .stat__river {
   display: flex; align-items: center; gap: 8px; margin-bottom: 18px;
@@ -391,6 +411,7 @@ em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spa
 .diff-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .swatch { display: inline-block; width: 12px; height: 8px; }
 .swatch--line { height: 2px; }
+.swatch--dashed { height: 0; border-top: 2px dashed var(--year-ref); }
 
 .chart-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-weight: 600; margin: 0 0 6px; }
 .chart-title__unit { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); font-weight: 400; }
@@ -451,6 +472,72 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 }
 .zoom-open:hover { color: var(--signal); }
 
+/* ---------- 7b) Regen und Pegel ---------------------------------- */
+/* Links die zwei Messbecher, rechts die Grafik */
+.rain { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: clamp(16px, 3vw, 36px); background: var(--card); border-radius: var(--radius); padding: clamp(14px, 2.4vw, 24px); }
+.chart--rain { height: clamp(340px, 52vh, 480px); }
+.chart--rain-small { height: 260px; }
+
+.gauges { display: flex; flex-direction: column; }
+.gauges__title { font-weight: 600; margin: 0 0 18px; line-height: 1.3; }
+.gauges__title small { display: block; font-weight: 400; font-size: .86rem; color: var(--ink-3); }
+.gauges__row { flex: 1; display: flex; gap: 18px; min-height: 220px; }
+/* Ein Messbecher ist ein Knopf: Klick zeigt dieses Jahr in der Grafik */
+.gauge {
+  appearance: none; background: none; border: 0; padding: 0; color: var(--ink-2); font: inherit; cursor: pointer;
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: color .15s;
+}
+.gauge:hover, .gauge[aria-pressed="true"] { color: var(--ink); }
+.gauge__value { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gauge__value small { font-size: .5em; font-weight: 500; margin-left: .15em; letter-spacing: 0; }
+/* Das Glas: oben offen, unten abgerundet. Die Füllung steigt von unten. */
+.gauge__tube {
+  position: relative; flex: 1; width: 56px; min-height: 140px; overflow: hidden;
+  border: 2px solid var(--rule-2); border-top: 0; border-radius: 0 0 16px 16px;
+  background: repeating-linear-gradient(to top, transparent 0 23px, var(--rule) 23px 24px); /* Skalenstriche */
+  transition: border-color .15s;
+}
+.gauge[aria-pressed="true"] .gauge__tube { border-color: var(--ink-2); }
+.gauge__fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  background: linear-gradient(to top, #3d8fd1, var(--rain)); opacity: .55;
+  transition: height 1.4s cubic-bezier(.3, .6, .1, 1), opacity .15s;
+}
+.gauge[aria-pressed="true"] .gauge__fill { opacity: 1; }
+.gauges.is-visible .gauge__fill { height: var(--fill); }
+.gauge__year { font-family: var(--mono); font-size: .8rem; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--rule-2); }
+.gauge[aria-pressed="true"] .gauge__year { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.gauges__delta { margin: 16px 0 0; font-size: .9rem; color: var(--ink-2); }
+.gauges__delta strong { color: var(--ink); font-size: 1.1rem; }
+
+/* Die Grafik: Himmel, Regenbalken, Pegel */
+.rain-sky { fill: rgba(111, 194, 240, .05); }
+.rain-bar { fill: var(--rain); opacity: .85; transition: opacity .15s; }
+/* Die Balken wachsen von oben nach unten, sobald man zur Grafik scrollt.
+   --i ist die Nummer der Woche: So wachsen sie nacheinander, wie fallender Regen. */
+.rain-bar { transform-box: fill-box; transform-origin: top; transform: scaleY(0); transition: transform .7s cubic-bezier(.3, .6, .1, 1) calc(var(--i, 0) * 12ms), opacity .15s; }
+.is-visible .rain-bar { transform: scaleY(1); }
+.rain-bar.is-active { fill: var(--ink); opacity: 1; }
+.level-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.level-ghost { fill: none; stroke: var(--year-ref); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.level-low { fill: var(--signal); opacity: .45; }
+.level-high { fill: var(--cool); opacity: .4; }
+.axis-unit { fill: var(--ink-3); font-family: var(--mono); font-size: 10px; }
+
+/* Am Ende der Story: der Weg zu allen Daten */
+.more {
+  display: grid; gap: 14px; text-decoration: none; color: var(--ink);
+  background: var(--card); border-radius: var(--radius); padding: clamp(22px, 4vw, 44px);
+  border: 1px solid transparent; transition: border-color .2s;
+}
+.more:hover { border-color: var(--signal); }
+.more__kicker { font-size: .9rem; color: var(--signal); font-weight: 600; }
+.more__title { font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 700; letter-spacing: -0.045em; line-height: .95; }
+.more__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; color: var(--ink-2); max-width: 44rem; }
+.more__list span::before { content: "→ "; color: var(--ink-3); }
+.more__btn { justify-self: start; display: inline-flex; align-items: center; margin-top: 8px; }
+.more:hover .more__btn { border-color: var(--ink); }
+
 /* Einen Fluss hervorheben: alle anderen werden blass */
 [data-station] { transition: opacity .25s ease, background-color .2s; }
 .is-dim { opacity: .24; }
@@ -497,6 +584,7 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 
 @media (prefers-reduced-motion: reduce) {
   .stripes__svg { clip-path: none; transition: none; }
+  .gauge__fill, .rain-bar { transition: none; }
   .chart, .tooltip, .station, [data-station] { transition: none; }
 }
 
@@ -547,6 +635,7 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 @media (max-width: 640px) {
   body { font-size: 1rem; }
   .stats { grid-template-columns: minmax(0, 1fr); }
+  .chart--rain { height: 360px; }
   .multiples__grid { grid-template-columns: minmax(0, 1fr); }
   .multiple, .multiple + .multiple { border-left: 0; padding-left: 0; padding-right: 0; }
   .columns { grid-template-columns: minmax(0, 1fr); }
@@ -564,6 +653,14 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   .matrix .group-row { border-bottom: 0; }
   .matrix td:last-child { text-align: left; }
   .matrix td:last-child::before { content: "geprüft "; color: var(--ink-3); } /* auf dem Handy fehlt die Tabellen-Überschrift, deshalb steht «geprüft» davor */
+  .matrix td.matrix__rain::before { content: "Regen "; color: var(--ink-3); }
+  /* Regen und Pegel: die Messbecher nebeneinander über der Grafik */
+  .rain { grid-template-columns: minmax(0, 1fr); }
+  .gauges__row { min-height: 0; }
+  .gauge { min-width: 0; }
+  .gauge__tube { flex: none; height: 130px; min-height: 0; width: 44px; }
+  .gauge__value { font-size: 1.3rem; }
+  .more__list { grid-template-columns: minmax(0, 1fr); }
   .zoom { width: 100%; max-height: 100%; height: 100%; margin: 0; border: 0; }
   .zoom__head { flex-direction: column; }
   .chart--zoom { height: 55vh; }
