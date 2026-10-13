@@ -217,13 +217,15 @@ em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spa
 .stat--rain { position: relative; overflow: hidden; cursor: default; }
 .stat__hint { margin-left: auto; font-size: .78rem; color: var(--ink-3); border: 1px solid var(--rule-2); border-radius: 999px; padding: 1px 9px; }
 .stat__more {
-  position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 22px 18px;
-  background: var(--card); border-top: 1px solid var(--rule-2);
+  position: absolute; inset: 0; padding: 20px 22px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: var(--card);
   opacity: 0; transform: translateY(12px); pointer-events: none; transition: opacity .2s, transform .2s;
 }
 .stat--rain:hover .stat__more, .stat--rain:focus-within .stat__more { opacity: 1; transform: none; pointer-events: auto; }
 .stat--rain:hover .stat__hint, .stat--rain:focus-within .stat__hint { color: var(--ink); border-color: var(--ink-2); }
-.stat__more-title { font-size: .8rem; color: var(--ink-3); margin: 0 0 8px; }
+.stat__more-title { font-size: .86rem; color: var(--ink-2); margin: 0 0 10px; line-height: 1.4; }
+.stat__more-title strong { display: block; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; color: var(--ink); line-height: 1.1; }
 .stat__more ul { list-style: none; margin: 0; padding: 0; }
 .stat__row { display: grid; grid-template-columns: 10px 1fr auto; align-items: baseline; gap: 10px; padding: 6px 0; border-top: 1px solid var(--rule); }
 .stat__row:first-child { border-top: 0; }

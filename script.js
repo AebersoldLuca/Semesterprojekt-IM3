@@ -859,7 +859,7 @@ function rainTile(stations) {
     el('p', { class: 'stat__label' }, `${change < 0 ? 'weniger' : 'mehr'} Regen als ${YEARS.ref}, zusammengezählt`),
     el('p', { class: 'stat__ref' }, `${fmtMm(refMean)} → ${fmtMm(curMean)}, Schnitt von 3 Wetterstationen`),
     el('div', { class: 'stat__more' },
-      el('p', { class: 'stat__more-title' }, `Regen 1. Januar bis ${cutoffLabel()}, ${YEARS.ref} → ${YEARS.cur}`),
+      el('p', { class: 'stat__more-title' }, el('strong', {}, `${fmtSigned(roundShown(change))}\u00a0%`),
       el('ul', {}, rows)));
 }
 
