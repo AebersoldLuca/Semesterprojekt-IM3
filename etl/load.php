@@ -10,10 +10,11 @@
  *
  * Danach speichert load.php alles in der Datenbank.
  *
- * Aufruf:
+ * Aufruf (siehe Abschnitt 2):
  *
- *   https://eure-domain.ch/etl/load.php?token=…          tägliches Update
- *   https://eure-domain.ch/etl/load.php?token=…&full=1   alles ab 2020 neu laden
+ *   php etl/load.php              direkt auf dem Server: tägliches Update
+ *   php etl/load.php --full       direkt auf dem Server: alles ab 2020 neu laden
+ *   curl -H "X-ETL-Token: …" https://eure-domain.ch/etl/load.php   über das Internet
  *
  * Ablauf:
  *
@@ -40,16 +41,24 @@ header('Content-Type: text/plain; charset=utf-8');
 require __DIR__ . '/../config.php';
 
 // ---------------------------------------------------------------------------
-// 2. Nur mit Passwort
+// 2. Wer darf einen Import starten?
 // ---------------------------------------------------------------------------
 //
-// load.php ist im Internet erreichbar, sonst könnte der Zeitplan sie nicht
-// starten. Damit nicht irgendwer einen Import auslöst, braucht es ein
-// geheimes Passwort in der Adresse (das «Token» aus config.php).
+// Es gibt zwei Wege:
+//
+// 1. Direkt auf dem Server (am sichersten): Der Cronjob startet PHP selbst,
+//    z.B. «php etl/load.php». Dann geht nichts über das Internet, und es
+//    braucht kein Passwort.
+// 2. Über das Internet: Dann muss das geheime Passwort (das «Token» aus
+//    config.php) in einer Kopfzeile der Anfrage mitkommen, «X-ETL-Token».
+//    Absichtlich nicht in der Adresse: Adressen landen in den Protokollen des
+//    Servers und im Browserverlauf, Kopfzeilen nicht.
+//
 // Ohne richtiges Token: «Kein Zugriff».
 
 if (PHP_SAPI !== 'cli') {
-    $token = (string) ($_GET['token'] ?? '');
+    // PHP macht aus der Kopfzeile «X-ETL-Token» den Eintrag HTTP_X_ETL_TOKEN.
+    $token = (string) ($_SERVER['HTTP_X_ETL_TOKEN'] ?? '');
 
     // hash_equals vergleicht die zwei Texte auf sichere Art.
     if ($etlToken === '' || !hash_equals($etlToken, $token)) {
@@ -61,7 +70,8 @@ if (PHP_SAPI !== 'cli') {
     set_time_limit(300);
 }
 
-// Steht «full» in der Adresse, laden wir alles ab 2020 neu.
+// «full» heisst: alles ab 2020 neu laden. Auf dem Server mit «--full»,
+// über das Internet mit «?full=1» in der Adresse (das ist kein Geheimnis).
 $fullImport = isset($_GET['full']) || in_array('--full', $argv ?? [], true);
 
 // ---------------------------------------------------------------------------

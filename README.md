@@ -108,6 +108,9 @@ Durchschnitt 2020–2025 als zweiten Massstab neben dem Hitzesommer 2022.
   wird deshalb immer aus dem Datensatz gelesen.
 - **Tooltips auf dem Handy:** Ein schwebender Tooltip verdeckte die ganze Grafik. Lösung: Auf schmalen
   Bildschirmen erscheinen die Werte in einem Panel unter der Grafik.
+- **Token nicht in der Adresse:** Zuerst stand das Import-Passwort in der Adresse (`?token=…`) und damit in
+  den Server-Protokollen. Jetzt startet der Cronjob `load.php` direkt auf dem Server, und über das Internet
+  geht es nur noch mit der Kopfzeile `X-ETL-Token`.
 - **Deployment:** Zugangsdaten und Import-Token nur auf dem Server hinterlegen, sensible Dateien per
   `.htaccess` sperren und den täglichen Import als Cronjob im Hostpoint Control Panel einrichten.
 

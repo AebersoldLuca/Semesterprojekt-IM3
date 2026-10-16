@@ -1,6 +1,7 @@
 # Das ETL-Verzeichnis ist nicht öffentlich.
-# Ausnahme: load.php, damit ein Cronjob per URL möglich ist – das Script
-# prüft dann selbst ein geheimes Token aus config.php.
+# Ausnahme: load.php, damit ein Import auch über das Internet möglich ist.
+# Das Script prüft dann selbst das geheime Token aus config.php
+# (Kopfzeile «X-ETL-Token», nie in der Adresse).
 Require all denied
 <Files "load.php">
     Require all granted

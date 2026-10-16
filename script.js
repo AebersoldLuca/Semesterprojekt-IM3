@@ -2017,11 +2017,13 @@ function renderYears() {
 
   // Für jede Spalte: der tiefste und der höchste Wert aller Jahre (für die Balken).
   const extent = columns.map((c, k) => d3.extent(rows, (r) => r.values[k]));
+  // data-label: die Spaltenüberschrift. Auf dem Handy steht sie vor jedem Wert,
+  // weil die Tabelle dort als Karten untereinander erscheint (siehe CSS).
   const cell = (v, k) => {
-    if (v == null) return el('td', {}, '–');
+    if (v == null) return el('td', { 'data-label': columns[k].label }, '–');
     const [lo, hi] = extent[k];
     const share = hi > lo ? (v - lo) / (hi - lo) : 1;
-    return el('td', {}, el('span', { class: 'years__value' }, columns[k].f(v)),
+    return el('td', { 'data-label': columns[k].label }, el('span', { class: 'years__value' }, columns[k].f(v)),
       el('span', { class: 'years__bar', style: `--share:${(0.08 + share * 0.92) * 100}%`, 'aria-hidden': 'true' }));
   };
 
@@ -2033,7 +2035,7 @@ function renderYears() {
       el('th', { scope: 'row' }, String(r.year), r.year === YEARS.ref ? el('small', {}, 'Hitzesommer') : null),
       r.values.map(cell)))),
     el('tfoot', {}, el('tr', {}, el('th', { scope: 'row' }, `Schnitt ${NORMAL_LABEL}`),
-      normal.map((v, k) => el('td', {}, v == null ? '–' : columns[k].f(v))))));
+      normal.map((v, k) => el('td', { 'data-label': columns[k].label }, v == null ? '–' : columns[k].f(v))))));
 }
 
 /* ---------- Die sechs Messstellen ------------------------------------- */

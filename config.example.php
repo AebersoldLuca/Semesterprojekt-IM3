@@ -30,12 +30,14 @@ $password = ''; // Passwort
 
 // --- Passwort für den täglichen Import -------------------------------------
 //
-// Der tägliche Import ruft etl/load.php über eine Web-Adresse auf:
-// …/etl/load.php?token=…
-// Nur wer dieses Passwort («Token») kennt, kann einen Import starten.
+// Wird etl/load.php über das Internet gestartet, muss dieses Passwort
+// («Token») in der Kopfzeile «X-ETL-Token» mitkommen, zum Beispiel:
+//     curl -H "X-ETL-Token: …" https://eure-domain.ch/etl/load.php
+// Startet der Cronjob load.php direkt auf dem Server («php etl/load.php»),
+// braucht es kein Token.
 // Einen langen Zufallswert eintragen, zum Beispiel aus dem Terminal:
 //     openssl rand -hex 24
-// Bleibt das Feld leer, ist der Import über die Web-Adresse gesperrt.
+// Bleibt das Feld leer, ist der Import über das Internet ganz gesperrt.
 
 $etlToken = '';
 

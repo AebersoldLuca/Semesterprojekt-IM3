@@ -661,8 +661,20 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
   /* Auf dem Handy: Beschriftungen in den Grafiken etwas grösser, damit man sie lesen kann */
   .axis text { font-size: 11.5px; }
   .year-label, .refline-label { font-size: 11px; }
-  .years td { min-width: 88px; }
-  .years th, .years td { padding-right: 10px; }
+  /* Die Jahres-Tabelle als Karten: jedes Jahr ein Block, jeder Wert mit seiner Beschriftung */
+  .years, .years tbody, .years tfoot, .years tr { display: block; width: 100%; }
+  .years thead { display: none; }
+  .years tr { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .years tr.is-ref { padding-left: 10px; padding-right: 10px; border-radius: var(--radius-s); }
+  .years th[scope="row"] { display: block; padding: 0 0 6px; border: 0; font-size: 1.05rem; }
+  .years td {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px;
+    min-width: 0; padding: 4px 0; border: 0; text-align: left;
+  }
+  .years td::before { content: attr(data-label); color: var(--ink-2); font-size: .86rem; font-style: normal; }
+  .years td .years__value { text-align: right; }
+  .years td .years__bar { grid-column: 1 / -1; margin-top: 2px; }
+  .years caption { display: block; }
   .chart--rain { height: 360px; }
   .multiples__grid { grid-template-columns: minmax(0, 1fr); }
   .multiple, .multiple + .multiple { border-left: 0; padding-left: 0; padding-right: 0; }
