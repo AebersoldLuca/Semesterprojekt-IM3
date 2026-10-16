@@ -19,10 +19,10 @@
  *
  *   1. Nachschauen, bis wann wir schon Daten haben (Flüsse und Regen)
  *   2. Ab dort (minus 60 Tage) neue Daten holen lassen
- *   3. Die sechs Stationen speichern
- *   4. Die Messwerte speichern: neue dazu, korrigierte überschreiben
- *   5. Notieren, wie der Import gelaufen ist
- *   6. Dasselbe nochmals für den Regen: Wetterstationen und Regenwerte
+ *   3. Die sechs Flussstationen und ihre Messwerte speichern
+ *   4. Den mittleren Wasserstand jeder Station neu ausrechnen
+ *   5. Die sechs Wetterstationen und den Regen speichern
+ *   6. Jeden Schritt im Protokoll (Tabelle import_runs) notieren
  *
  * Diese Datei gibt nichts an eine andere Datei zurück. Ihr Ergebnis steht
  * danach in der Datenbank.
@@ -65,7 +65,114 @@ if (PHP_SAPI !== 'cli') {
 $fullImport = isset($_GET['full']) || in_array('--full', $argv ?? [], true);
 
 // ---------------------------------------------------------------------------
-// 3. Mit der Datenbank verbinden
+// 3. Helfer, die mehrmals gebraucht werden
+// ---------------------------------------------------------------------------
+//
+// Flussdaten und Regen werden gleich gespeichert und gleich im Protokoll
+// notiert. Damit dieser Code nicht zweimal dasteht, steckt er in vier
+// kleinen Funktionen.
+
+/**
+ * Ab welchem Tag holen wir Daten?
+ *
+ * Wir müssen nicht jeden Tag alles seit 2020 neu holen. Es reicht, ab dem
+ * letzten gespeicherten Tag weiterzumachen. Wir gehen aber 60 Tage zurück:
+ * BAFU und MeteoSchweiz kontrollieren ihre Werte im Nachhinein und
+ * korrigieren manchmal etwas. So kommen auch diese Korrekturen bei uns an.
+ *
+ * - $latestDays: der letzte gespeicherte Tag jeder Zeitreihe
+ * - $expected: wie viele Zeitreihen es geben müsste. Fehlt eine, holen wir
+ *   alles ab dem 1. Januar 2020 (z.B. bei einer leeren Datenbank).
+ */
+function startDateFor(array $latestDays, int $expected, bool $fullImport): string {
+    $firstDay = '2020-01-01';
+
+    if ($fullImport || count($latestDays) < $expected) {
+        return $firstDay;
+    }
+
+    return max($firstDay, date('Y-m-d', strtotime(min($latestDays) . ' -60 days')));
+}
+
+/**
+ * Im Protokoll eine neue Zeile anlegen: «Import gestartet».
+ * Gibt die Nummer dieser Zeile zurück, damit wir sie später ergänzen können.
+ * $aggregation sagt, welche Werte: 'data_1day_mean' (BAFU) oder 'meteo_rka150d0' (Regen).
+ */
+function startRun(PDO $pdo, string $aggregation, bool $fullImport, string $from): int {
+    $pdo->prepare(
+        "INSERT INTO import_runs (started_at, status, mode, aggregation, window_from, window_to)
+         VALUES (UTC_TIMESTAMP(), 'running', :mode, :aggregation, :window_from, CURDATE())"
+    )->execute([
+        'mode' => $fullImport ? 'full' : 'incremental',
+        'aggregation' => $aggregation,
+        'window_from' => $from,
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
+/** Im Protokoll notieren: «Import fertig», mit allen Zahlen. */
+function finishRun(PDO $pdo, int $runId, string $status, array $numbers, ?string $message): void {
+    $pdo->prepare(
+        'UPDATE import_runs
+         SET finished_at = UTC_TIMESTAMP(), status = :status,
+             api_requests = :api_requests, rows_received = :rows_received,
+             rows_inserted = :rows_inserted, rows_updated = :rows_updated,
+             rows_unchanged = :rows_unchanged, rows_rejected = :rows_rejected, message = :message
+         WHERE id = :id'
+    )->execute($numbers + ['status' => $status, 'message' => $message, 'id' => $runId]);
+}
+
+/** Im Protokoll notieren: «Import fehlgeschlagen», mit der Fehlermeldung. */
+function failRun(PDO $pdo, int $runId, string $message): void {
+    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
+        ->execute([mb_substr($message, 0, 1000), $runId]);
+}
+
+/**
+ * Viele Zeilen auf einmal speichern: alles oder nichts.
+ *
+ * Entweder werden alle Werte gespeichert oder gar keiner. So steht nie eine
+ * halbe Lieferung in der Datenbank. (Das nennt man eine «Transaktion». Sie
+ * macht das Speichern ausserdem viel schneller.)
+ *
+ * - $statement: die vorbereitete Anweisung zum Speichern einer Zeile
+ * - $toParams: macht aus einer Zeile die Werte für diese Anweisung
+ *
+ * Die Datenbank sagt nach jeder Zeile, was passiert ist: 1 = neu,
+ * 2 = geändert, 0 = gleich geblieben. Das zählen wir für den Bericht.
+ */
+function saveRows(PDO $pdo, PDOStatement $statement, array $rows, callable $toParams): array {
+    $counts = ['rows_inserted' => 0, 'rows_updated' => 0, 'rows_unchanged' => 0];
+
+    $pdo->beginTransaction();
+
+    try {
+        foreach ($rows as $row) {
+            $statement->execute($toParams($row));
+            $changed = $statement->rowCount();
+
+            if ($changed === 1) {
+                $counts['rows_inserted']++;
+            } elseif ($changed === 2) {
+                $counts['rows_updated']++;
+            } else {
+                $counts['rows_unchanged']++;
+            }
+        }
+
+        $pdo->commit(); // jetzt alles auf einmal festschreiben
+    } catch (Throwable $e) {
+        $pdo->rollBack(); // etwas ging schief: alles rückgängig machen
+        throw $e;
+    }
+
+    return $counts;
+}
+
+// ---------------------------------------------------------------------------
+// 4. Mit der Datenbank verbinden
 // ---------------------------------------------------------------------------
 
 try {
@@ -76,22 +183,11 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Ab welchem Tag holen wir Daten?
+// 5. Ab welchem Tag holen wir Daten?
 // ---------------------------------------------------------------------------
-//
-// Wir müssen nicht jeden Tag alles seit 2020 neu holen. Es reicht, ab dem
-// letzten gespeicherten Tag weiterzumachen.
-//
-// Wir gehen aber 60 Tage zurück: Das BAFU kontrolliert seine Werte im
-// Nachhinein und korrigiert manchmal etwas. So kommen auch diese
-// Korrekturen bei uns an.
-//
-// Ist die Datenbank noch leer, holen wir alles ab dem 1. Januar 2020.
 
-$firstDay = '2020-01-01';
-$revisionDays = 60;
-
-// Pro Station und Messgrösse: Was ist der letzte gespeicherte Tag?
+// Flüsse: der letzte gespeicherte Tag pro Station und Messgrösse.
+// Es müssten 12 sein: 6 Stationen mal 2 Messgrössen.
 $latestDays = $pdo->query(
     'SELECT MAX(o.obs_date)
      FROM observations AS o
@@ -100,45 +196,15 @@ $latestDays = $pdo->query(
      GROUP BY o.station_id, o.parameter_code'
 )->fetchAll(PDO::FETCH_COLUMN);
 
-// Es müssten 12 sein: 6 Stationen mal 2 Messgrössen. Fehlt etwas, alles neu holen.
-if ($fullImport || count($latestDays) < 12) {
-    $startDate = $firstDay;
-} else {
-    $startDate = date('Y-m-d', strtotime(min($latestDays) . " -{$revisionDays} days"));
-    $startDate = max($firstDay, $startDate);
-}
-
-// Dasselbe für den Regen: Auch MeteoSchweiz korrigiert manchmal nachträglich.
-// Es müssten 6 Wetterstationen sein. Fehlt etwas, alles ab 2020 holen.
+// Regen: der letzte gespeicherte Tag pro Wetterstation. Es müssten 6 sein.
 $latestRainDays = $pdo->query(
     'SELECT MAX(obs_date) FROM precipitation GROUP BY weather_station_id'
 )->fetchAll(PDO::FETCH_COLUMN);
 
-if ($fullImport || count($latestRainDays) < 6) {
-    $meteoStartDate = $firstDay;
-} else {
-    $meteoStartDate = date('Y-m-d', strtotime(min($latestRainDays) . " -{$revisionDays} days"));
-    $meteoStartDate = max($firstDay, $meteoStartDate);
-}
+$startDate = startDateFor($latestDays, 12, $fullImport);
+$meteoStartDate = startDateFor($latestRainDays, 6, $fullImport);
 
 echo "Flüsse: lade ab {$startDate}. Regen: lade ab {$meteoStartDate}.\n";
-
-// ---------------------------------------------------------------------------
-// 5. Im Protokoll notieren: «Import gestartet»
-// ---------------------------------------------------------------------------
-//
-// Jeder Import bekommt eine Zeile in der Tabelle import_runs. So sieht man
-// später, wann was geladen wurde, und auch, wenn etwas schiefging.
-
-$pdo->prepare(
-    "INSERT INTO import_runs (started_at, status, mode, aggregation, window_from, window_to)
-     VALUES (UTC_TIMESTAMP(), 'running', :mode, 'data_1day_mean', :window_from, CURDATE())"
-)->execute([
-    'mode' => $fullImport ? 'full' : 'incremental',
-    'window_from' => $startDate,
-]);
-
-$runId = (int) $pdo->lastInsertId(); // die Nummer dieses Imports
 
 // ---------------------------------------------------------------------------
 // 6. Die geprüften Daten holen
@@ -146,74 +212,60 @@ $runId = (int) $pdo->lastInsertId(); // die Nummer dieses Imports
 //
 // Hier läuft die Kette los: transform.php holt die Rohdaten bei extract.php,
 // extract.php fragt beim BAFU und bei MeteoSchweiz. Die beiden Startdaten von
-// oben werden dabei mitgegeben.
+// oben ($startDate, $meteoStartDate) werden dabei mitgegeben.
 //
 // Ist das BAFU nicht erreichbar, brechen wir ab. Die Daten, die schon in
 // unserer Datenbank sind, bleiben unverändert. Die Website läuft weiter.
-// (Fällt nur MeteoSchweiz aus, geht es weiter, siehe Abschnitt 10.)
+// (Fällt nur MeteoSchweiz aus, geht es weiter, siehe Abschnitt 9.)
+
+$runId = startRun($pdo, 'data_1day_mean', $fullImport, $startDate);
 
 try {
     $result = include __DIR__ . '/transform.php';
 } catch (Throwable $e) {
-    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
-        ->execute([mb_substr($e->getMessage(), 0, 1000), $runId]);
-
+    failRun($pdo, $runId, $e->getMessage());
     exit('Extract/Transform fehlgeschlagen: ' . $e->getMessage() . "\nDie gespeicherten Daten bleiben unverändert.\n");
 }
 
-$stations = $result['stations'];
-$rows = $result['data'];
 $audit = $result['audit'];
 
 echo 'Die API liefert ' . $audit['input_rows'] . ' Zeilen in '
     . $result['extract_audit']['api_requests'] . " Abfragen.\n";
-echo 'Der Transform liefert ' . count($rows) . ' gültige Messwerte, '
+echo 'Der Transform liefert ' . count($result['data']) . ' gültige Messwerte, '
     . ($audit['input_rows'] - $audit['output_rows']) . " verworfen.\n\n";
 
 // ---------------------------------------------------------------------------
-// 7. Die Messstationen speichern
+// 7. Die Flussstationen speichern
 // ---------------------------------------------------------------------------
 //
 // Für jede Station: Gibt es sie schon in der Datenbank?
 // - Nein: neu anlegen.
 // - Ja: ihre Angaben auffrischen (falls das BAFU etwas geändert hat).
+// «ON DUPLICATE KEY UPDATE» erledigt beides in einem Schritt.
 //
 // Jede Station bekommt in der Datenbank eine interne Nummer (id). Die merken
 // wir uns, denn jeder Messwert wird später mit dieser Nummer verknüpft.
 
-$findStation = $pdo->prepare('SELECT id FROM stations WHERE station_no = ?');
-
-$insertStation = $pdo->prepare(
+$saveStation = $pdo->prepare(
     'INSERT INTO stations (station_no, name, river_name, site_name, catchment_name,
                            latitude, longitude, elevation, status, coverage_from, sort_order)
      VALUES (:station_no, :name, :river_name, :site_name, :catchment_name,
-             :latitude, :longitude, :elevation, :status, :coverage_from, :sort_order)'
+             :latitude, :longitude, :elevation, :status, :coverage_from, :sort_order)
+     ON DUPLICATE KEY UPDATE
+        name = VALUES(name), river_name = VALUES(river_name), site_name = VALUES(site_name),
+        catchment_name = VALUES(catchment_name), latitude = VALUES(latitude), longitude = VALUES(longitude),
+        elevation = VALUES(elevation), status = VALUES(status), coverage_from = VALUES(coverage_from),
+        sort_order = VALUES(sort_order), is_active = 1'
 );
-
-$updateStation = $pdo->prepare(
-    'UPDATE stations
-     SET name = :name, river_name = :river_name, site_name = :site_name,
-         catchment_name = :catchment_name, latitude = :latitude, longitude = :longitude,
-         elevation = :elevation, status = :status, coverage_from = :coverage_from,
-         sort_order = :sort_order, is_active = 1
-     WHERE station_no = :station_no'
-);
+$findStation = $pdo->prepare('SELECT id FROM stations WHERE station_no = ?');
 
 // Ein Merkzettel: BAFU-Nummer → interne Nummer in der Datenbank.
 $stationIds = [];
 
-foreach ($stations as $stationNo => $station) {
+foreach ($result['stations'] as $stationNo => $station) {
+    $saveStation->execute($station);
     $findStation->execute([$stationNo]);
-    $id = $findStation->fetchColumn();
-
-    if ($id === false) {
-        $insertStation->execute($station); // neu anlegen
-        $id = $pdo->lastInsertId();
-    } else {
-        $updateStation->execute($station); // auffrischen
-    }
-
-    $stationIds[$stationNo] = (int) $id;
+    $stationIds[$stationNo] = (int) $findStation->fetchColumn();
 }
 
 // Stationen, die wir nicht mehr verwenden, werden ausgeblendet, nicht
@@ -228,21 +280,13 @@ echo 'Stationen in der Datenbank: ' . implode(', ', array_keys($stationIds)) . "
 // 8. Die Messwerte speichern
 // ---------------------------------------------------------------------------
 //
-// Wir sammeln jeden Tag dazu, die alten Werte bleiben also stehen.
-//
 // Damit nichts doppelt gespeichert wird, gibt es in der Datenbank eine Regel:
 // Pro Station, Messgrösse und Zeitpunkt darf es nur eine Zeile geben.
-//
 // Kommt ein Wert, den wir schon haben, wird er überschrieben. So kommen
-// Korrekturen des BAFU an. («ON DUPLICATE KEY UPDATE» heisst: Gibt es die
-// Zeile schon, dann aktualisieren statt doppelt einfügen.)
-//
-// Das Änderungsdatum (updated_at) wird nur neu gesetzt, wenn sich der Wert
-// wirklich geändert hat.
-//
-// Danach sagt die Datenbank, was passiert ist: 1 = neu, 2 = geändert, 0 = gleich.
+// Korrekturen des BAFU an. Das Änderungsdatum (updated_at) wird nur neu
+// gesetzt, wenn sich der Wert wirklich geändert hat.
 
-$insertObservation = $pdo->prepare(
+$saveObservation = $pdo->prepare(
     'INSERT INTO observations (station_id, parameter_code, measured_at, obs_date, value, release_state, import_run_id)
      VALUES (:station_id, :parameter_code, :measured_at, :obs_date, :value, :release_state, :import_run_id)
      ON DUPLICATE KEY UPDATE
@@ -254,92 +298,55 @@ $insertObservation = $pdo->prepare(
         release_state = VALUES(release_state)'
 );
 
-// Zähler für den Bericht am Schluss.
-$inserted = 0;
-$updated = 0;
-$unchanged = 0;
-
-// Alles oder nichts: Entweder werden alle Werte gespeichert oder gar keiner.
-// So steht nie eine halbe Lieferung in der Datenbank. (Das nennt man eine
-// «Transaktion». Sie macht das Speichern ausserdem viel schneller.)
-$pdo->beginTransaction();
-
 try {
-    foreach ($rows as $row) {
-        $insertObservation->execute([
-            'station_id' => $stationIds[$row['station_no']],
-            'parameter_code' => $row['parameter_code'],
-            'measured_at' => $row['measured_at'],
-            'obs_date' => $row['obs_date'],
-            'value' => $row['value'],
-            'release_state' => $row['release_state'],
-            'import_run_id' => $runId,
-        ]);
-
-        $changed = $insertObservation->rowCount();
-
-        if ($changed === 1) {
-            $inserted++;
-        } elseif ($changed === 2) {
-            $updated++;
-        } else {
-            $unchanged++;
-        }
-    }
-
-    $pdo->commit(); // jetzt alles auf einmal festschreiben
+    $counts = saveRows($pdo, $saveObservation, $result['data'], fn ($row) => [
+        'station_id' => $stationIds[$row['station_no']],
+        'parameter_code' => $row['parameter_code'],
+        'measured_at' => $row['measured_at'],
+        'obs_date' => $row['obs_date'],
+        'value' => $row['value'],
+        'release_state' => $row['release_state'],
+        'import_run_id' => $runId,
+    ]);
 } catch (Throwable $e) {
-    $pdo->rollBack(); // etwas ging schief: alles rückgängig machen
-
-    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
-        ->execute([mb_substr($e->getMessage(), 0, 1000), $runId]);
-
+    failRun($pdo, $runId, $e->getMessage());
     exit('Speichern fehlgeschlagen: ' . $e->getMessage() . "\n");
 }
 
-echo "{$inserted} neu, {$updated} geändert, {$unchanged} unverändert.\n\n";
+echo "{$counts['rows_inserted']} neu, {$counts['rows_updated']} geändert, {$counts['rows_unchanged']} unverändert.\n";
 
-// ---------------------------------------------------------------------------
-// 9. Im Protokoll notieren: «Import fertig»
-// ---------------------------------------------------------------------------
-//
+// Den mittleren Wasserstand jeder Station neu ausrechnen und speichern.
+// Er ist die «Null-Linie» der Website: Ein Fluss steht so viele Zentimeter
+// über oder unter seinem Durchschnitt. Wir rechnen ihn hier einmal pro Import
+// aus, statt bei jedem Besuch der Website (das spart Rechenzeit in unload.php).
+$pdo->exec(
+    "INSERT INTO station_baselines (station_id, mean_level)
+     SELECT station_id, AVG(value) FROM observations WHERE parameter_code = 'W' GROUP BY station_id
+     ON DUPLICATE KEY UPDATE mean_level = VALUES(mean_level)"
+);
+
+// Im Protokoll notieren: «Import fertig».
 // «success» = alles geklappt.
 // «partial» = eine Portion hat nicht geklappt, der Rest ist gespeichert.
 //             Der nächste Import holt die Lücke nach.
-
 $failedWindows = $result['extract_audit']['failed_windows'];
 $status = $failedWindows === 0 ? 'success' : 'partial';
 
-$pdo->prepare(
-    'UPDATE import_runs
-     SET finished_at = UTC_TIMESTAMP(), status = :status,
-         api_requests = :api_requests, rows_received = :rows_received,
-         rows_inserted = :rows_inserted, rows_updated = :rows_updated,
-         rows_unchanged = :rows_unchanged, rows_rejected = :rows_rejected, message = :message
-     WHERE id = :id'
-)->execute([
-    'status' => $status,
+finishRun($pdo, $runId, $status, $counts + [
     'api_requests' => $result['extract_audit']['api_requests'],
     'rows_received' => $audit['input_rows'],
-    'rows_inserted' => $inserted,
-    'rows_updated' => $updated,
-    'rows_unchanged' => $unchanged,
     'rows_rejected' => $audit['input_rows'] - $audit['output_rows'],
-    'message' => $failedWindows > 0 ? "{$failedWindows} Zeitfenster fehlgeschlagen." : null,
-    'id' => $runId,
-]);
+], $failedWindows > 0 ? "{$failedWindows} Zeitfenster fehlgeschlagen." : null);
 
 // Protokolleinträge, die älter als ein Jahr sind, löschen. Die Messwerte bleiben.
 $pdo->exec('DELETE FROM import_runs WHERE started_at < UTC_TIMESTAMP() - INTERVAL 365 DAY');
 
 // ---------------------------------------------------------------------------
-// 10. Der Regen von MeteoSchweiz
+// 9. Der Regen von MeteoSchweiz
 // ---------------------------------------------------------------------------
 //
 // Jetzt dasselbe für den Regen. Die Daten hat extract.php schon geholt und
-// transform.php schon geprüft (unter «meteo»). Hier speichern wir sie:
-//   a) im Protokoll notieren   b) Wetterstationen speichern
-//   c) Regenwerte speichern    d) im Protokoll notieren: fertig
+// transform.php schon geprüft (unter «meteo»). Hier speichern wir sie.
 //
 // Klappt hier etwas nicht, ist das kein Weltuntergang: Die Flussdaten von
 // oben sind schon gespeichert. Wir notieren den Fehler und machen weiter.
@@ -347,17 +354,7 @@ $pdo->exec('DELETE FROM import_runs WHERE started_at < UTC_TIMESTAMP() - INTERVA
 echo "\nRegen von MeteoSchweiz:\n";
 
 $meteo = $result['meteo'];
-
-// a) Im Protokoll notieren: «Regen-Import gestartet».
-$pdo->prepare(
-    "INSERT INTO import_runs (started_at, status, mode, aggregation, window_from, window_to)
-     VALUES (UTC_TIMESTAMP(), 'running', :mode, 'meteo_rka150d0', :window_from, CURDATE())"
-)->execute([
-    'mode' => $fullImport ? 'full' : 'incremental',
-    'window_from' => $meteoStartDate,
-]);
-
-$meteoRunId = (int) $pdo->lastInsertId();
+$meteoRunId = startRun($pdo, 'meteo_rka150d0', $fullImport, $meteoStartDate);
 
 try {
     // War MeteoSchweiz nicht erreichbar? Dann gibt es nichts zu speichern.
@@ -365,8 +362,7 @@ try {
         throw new RuntimeException($meteo['error']);
     }
 
-    // b) Die Wetterstationen speichern: neu anlegen oder auffrischen.
-    //    «ON DUPLICATE KEY UPDATE» erledigt beides in einem Schritt.
+    // Die Wetterstationen speichern: neu anlegen oder auffrischen.
     $saveWeatherStation = $pdo->prepare(
         'INSERT INTO weather_stations (abbr, name, river_station_no, latitude, longitude, elevation)
          VALUES (:abbr, :name, :river_station_no, :latitude, :longitude, :elevation)
@@ -385,9 +381,8 @@ try {
         $weatherIds[$abbr] = (int) $findWeatherStation->fetchColumn();
     }
 
-    // c) Die Regenwerte speichern, wieder alles oder nichts (Transaktion).
-    //    Gibt es den Tag schon, wird der Wert überschrieben.
-    $insertRain = $pdo->prepare(
+    // Die Regenwerte speichern. Gibt es den Tag schon, wird der Wert überschrieben.
+    $saveRain = $pdo->prepare(
         'INSERT INTO precipitation (weather_station_id, obs_date, precipitation_mm, import_run_id)
          VALUES (:weather_station_id, :obs_date, :precipitation_mm, :import_run_id)
          ON DUPLICATE KEY UPDATE
@@ -396,81 +391,39 @@ try {
             precipitation_mm = VALUES(precipitation_mm)'
     );
 
-    $rainInserted = 0;
-    $rainUpdated = 0;
-    $rainUnchanged = 0;
-
-    $pdo->beginTransaction();
-
-    foreach ($meteo['data'] as $row) {
-        $insertRain->execute([
-            'weather_station_id' => $weatherIds[$row['station_abbr']],
-            'obs_date' => $row['obs_date'],
-            'precipitation_mm' => $row['precipitation_mm'],
-            'import_run_id' => $meteoRunId,
-        ]);
-
-        // Wieder: 1 = neu, 2 = geändert, 0 = gleich.
-        $changed = $insertRain->rowCount();
-
-        if ($changed === 1) {
-            $rainInserted++;
-        } elseif ($changed === 2) {
-            $rainUpdated++;
-        } else {
-            $rainUnchanged++;
-        }
-    }
-
-    $pdo->commit();
-
-    // d) Im Protokoll notieren: «Regen-Import fertig».
-    $meteoFailed = $meteo['extract_audit']['failed_files'];
-    $meteoStatus = $meteoFailed === 0 ? 'success' : 'partial';
-
-    $pdo->prepare(
-        'UPDATE import_runs
-         SET finished_at = UTC_TIMESTAMP(), status = :status,
-             api_requests = :api_requests, rows_received = :rows_received,
-             rows_inserted = :rows_inserted, rows_updated = :rows_updated,
-             rows_unchanged = :rows_unchanged, rows_rejected = :rows_rejected, message = :message
-         WHERE id = :id'
-    )->execute([
-        'status' => $meteoStatus,
-        'api_requests' => $meteo['extract_audit']['api_requests'],
-        'rows_received' => $meteo['audit']['input_rows'],
-        'rows_inserted' => $rainInserted,
-        'rows_updated' => $rainUpdated,
-        'rows_unchanged' => $rainUnchanged,
-        'rows_rejected' => $meteo['audit']['input_rows'] - $meteo['audit']['output_rows'],
-        'message' => $meteoFailed > 0 ? "{$meteoFailed} Dateien fehlgeschlagen." : null,
-        'id' => $meteoRunId,
+    $rainCounts = saveRows($pdo, $saveRain, $meteo['data'], fn ($row) => [
+        'weather_station_id' => $weatherIds[$row['station_abbr']],
+        'obs_date' => $row['obs_date'],
+        'precipitation_mm' => $row['precipitation_mm'],
+        'import_run_id' => $meteoRunId,
     ]);
 
-    echo "{$rainInserted} neu, {$rainUpdated} geändert, {$rainUnchanged} unverändert. Status: {$meteoStatus}.\n";
+    // Im Protokoll notieren: «Regen-Import fertig».
+    $failedFiles = $meteo['extract_audit']['failed_files'];
+    $meteoStatus = $failedFiles === 0 ? 'success' : 'partial';
+
+    finishRun($pdo, $meteoRunId, $meteoStatus, $rainCounts + [
+        'api_requests' => $meteo['extract_audit']['api_requests'],
+        'rows_received' => $meteo['audit']['input_rows'],
+        'rows_rejected' => $meteo['audit']['input_rows'] - $meteo['audit']['output_rows'],
+    ], $failedFiles > 0 ? "{$failedFiles} Dateien fehlgeschlagen." : null);
+
+    echo "{$rainCounts['rows_inserted']} neu, {$rainCounts['rows_updated']} geändert, "
+        . "{$rainCounts['rows_unchanged']} unverändert. Status: {$meteoStatus}.\n";
 } catch (Throwable $e) {
-    // Etwas ging schief: halb Gespeichertes rückgängig machen und notieren.
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
-
-    $pdo->prepare("UPDATE import_runs SET finished_at = UTC_TIMESTAMP(), status = 'failed', message = ? WHERE id = ?")
-        ->execute([mb_substr($e->getMessage(), 0, 1000), $meteoRunId]);
-
+    failRun($pdo, $meteoRunId, $e->getMessage());
     echo 'Regen-Import fehlgeschlagen: ' . $e->getMessage() . "\nDie Flussdaten sind trotzdem gespeichert.\n";
 }
 
-echo "\n";
-
 // ---------------------------------------------------------------------------
-// 11. Kontrolle: Hat alles geklappt?
+// 10. Kontrolle: Hat alles geklappt?
 // ---------------------------------------------------------------------------
 //
 // Wir lesen die neuesten Werte wieder aus der Datenbank und schreiben sie in
 // den Bericht. Genau diese Werte zeigt danach die Website.
 
 $total = $pdo->query('SELECT COUNT(*) FROM observations')->fetchColumn();
-echo "Status: {$status}. In observations stehen jetzt {$total} Messwerte.\n\n";
+echo "\nStatus: {$status}. In observations stehen jetzt {$total} Messwerte.\n\n";
 
 $latestValues = $pdo->query(
     "SELECT s.river_name, o.obs_date, o.parameter_code, o.value
@@ -504,9 +457,7 @@ foreach ($latestRain->fetchAll() as $value) {
 // Zum Schluss: Welche Werte hat transform.php weggelassen, und warum?
 echo "\nVerworfen im Transform:\n";
 
-$rejected = $audit['input_rows'] - $audit['output_rows'];
-
-if ($rejected === 0) {
+if ($audit['input_rows'] === $audit['output_rows']) {
     echo "  keine\n";
 }
 

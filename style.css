@@ -27,7 +27,7 @@
   --bg-2:      #0e141b;   /* etwas heller: beim Darüberfahren */
   --ink:       #e7ebee;   /* Text */
   --ink-2:     #9ba6b1;   /* weniger wichtiger Text */
-  --ink-3:     #637080;   /* Achsen und kleine Beschriftungen */
+  --ink-3:     #7a8695;   /* Achsen und kleine Beschriftungen (Kontrast mind. 4.5 : 1, gut lesbar) */
   --rule:      #19212a;   /* feine Trennlinien */
   --rule-2:    #2b3642;
   --grid:      #121920;   /* Gitter in Grafiken */
@@ -506,6 +506,22 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 /* Die Grafik: zwei Teile übereinander, jeder mit einer kleinen Überschrift */
 .panel-label { fill: var(--ink-2); font-family: var(--sans); font-size: 12px; font-weight: 600; }
 
+/* «Wie aussergewöhnlich ist 2026?»: alle Jahre in einer Tabelle mit kleinen Balken */
+.years { font-size: .95rem; }
+.years caption { caption-side: bottom; text-align: left; padding-top: 10px; font-size: .86rem; color: var(--ink-2); }
+.years th, .years td { padding: 10px 14px 10px 0; vertical-align: middle; }
+.years thead th { font-family: var(--sans); text-transform: none; font-size: .86rem; color: var(--ink-2); font-weight: 600; }
+.years tbody th { font-weight: 600; font-variant-numeric: tabular-nums; }
+.years tbody th small { display: block; font-weight: 400; font-size: .75rem; color: var(--ink-3); }
+.years td { min-width: 120px; }
+.years__value { display: block; font-variant-numeric: tabular-nums; }
+/* Der Balken: so lang, wie das Jahr im Vergleich zu allen anderen liegt */
+.years__bar { display: block; height: 6px; margin-top: 5px; width: var(--share); border-radius: 999px; background: var(--year-ref); opacity: .55; }
+.years tr.is-ref { background: var(--bg-2); }
+.years tr.is-cur th, .years tr.is-cur .years__value { color: var(--signal); }
+.years tr.is-cur .years__bar { background: var(--signal); opacity: 1; }
+.years tfoot th, .years tfoot td { color: var(--ink-2); font-style: italic; border-bottom: 0; }
+
 /* Am Ende der Story: der Weg zu allen Daten */
 .more {
   position: relative; isolation: isolate; overflow: hidden;
@@ -642,6 +658,11 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 @media (max-width: 640px) {
   body { font-size: 1rem; }
   .stats { grid-template-columns: minmax(0, 1fr); }
+  /* Auf dem Handy: Beschriftungen in den Grafiken etwas grösser, damit man sie lesen kann */
+  .axis text { font-size: 11.5px; }
+  .year-label, .refline-label { font-size: 11px; }
+  .years td { min-width: 88px; }
+  .years th, .years td { padding-right: 10px; }
   .chart--rain { height: 360px; }
   .multiples__grid { grid-template-columns: minmax(0, 1fr); }
   .multiple, .multiple + .multiple { border-left: 0; padding-left: 0; padding-right: 0; }

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=28">
+  <link rel="stylesheet" href="style.css?v=30">
 </head>
 <body data-page="story">
 
@@ -95,7 +95,7 @@
   <div class="section__body">
     <h2 id="schaetzen-title">Schätz mal!</h2>
     <p class="section__lead">
-      Die graue Linie ist die <span data-slot="draw-river">Limmat</span> im Hitzesommer 2022, die weisse der Januar 2026.
+      Die graue Linie ist <span data-slot="draw-river">die Limmat</span> im Hitzesommer 2022, die weisse der Januar 2026.
       Wie ging es 2026 weiter? Zeichne die Kurve mit der Maus oder dem Finger weiter.
     </p>
     <div class="draw">
@@ -126,8 +126,17 @@
         25 °C gefährlich, 26 °C während eines ganzen Tages können tödlich sein
         (<a href="https://media.bs.ch/original_file/e8e97aa97f41294b844e6c3232593cd5aa0739ed/temperaturen-gewaesser-bs-2014-2018.pdf" rel="noopener">Kanton Basel-Stadt</a>).
       </p>
-      <p data-slot="temp-threshold">
-        Wie oft wurde diese Schwelle 2026 überschritten? Die Zahlen werden berechnet …
+      <!-- Die Zahlen setzt script.js ein (renderStoryText). Von den Sätzen mit data-when
+           erscheint nur der, der zu den Daten passt. -->
+      <p>
+        Wie oft lag ein Fluss über dieser Grenze? <span data-slot="hot-river">Die Limmat</span> erreichte 2026
+        bis zum <span data-slot="cutoff-label">letzten Messtag</span> an <strong><span data-slot="hot-days-cur">–</span>&nbsp;Tagen</strong>
+        25&nbsp;°C oder mehr, 2022 im selben Zeitraum an <span data-slot="hot-days-ref">–</span>&nbsp;Tagen<span data-when="hot-normal" hidden>
+        und im Schnitt der Jahre 2020 bis 2025 an <span data-slot="hot-days-normal">–</span>&nbsp;Tagen</span>.
+        <span data-when="hot-more" hidden>Für die Fische war 2026 also bisher härter als der Hitzesommer.</span>
+        <span data-when="hot-equal" hidden>Das sind gleich viele Tage wie im Hitzesommer.</span>
+        <span data-when="hot-less" hidden>Für die Fische war 2026 also bisher weniger hart als der Hitzesommer.</span>
+        Dabei sind das Tagesmittel: Am Nachmittag ist das Wasser oft noch wärmer.
       </p>
     </div>
     <p class="section__lead" data-slot="stats-lead">
@@ -177,8 +186,27 @@
       </div>
     </div>
     <p class="note" id="rain-note"></p>
-    <!-- Erscheint erst nach dem Auflösen: Was das Regen-Konto zeigt (Zahlen aus den Daten) -->
-    <div class="prose prose--after" id="rain-turn" hidden></div>
+    <!-- Erscheint erst nach dem Auflösen: Was das Regen-Konto zeigt.
+         Die Zahlen setzt script.js ein (renderRainTurn), data-when wählt den passenden Satz. -->
+    <div class="prose prose--after" id="rain-turn" hidden>
+      <h3 class="prose__title">Was das Regen-Konto zeigt</h3>
+      <p>
+        Das Regen-Konto zeigt, wann die beiden Jahre auseinanderliefen. Bis Mitte August fielen in
+        <span data-slot="turn-station">der Region</span> 2022 <span data-slot="turn-early-ref">–</span> Regen,
+        2026 <span data-slot="turn-early-cur">–</span>.
+        <span data-when="turn" hidden>Dann kam 2022 die Wende: Vom 15. August bis zum <span data-slot="cutoff-label">letzten Messtag</span>
+          regnete es <strong data-slot="turn-late-ref">–</strong>, 2026 im selben Zeitraum nur
+          <strong data-slot="turn-late-cur">–</strong>. Im Diagramm ist das der helle Streifen rechts.</span>
+        <span data-when="no-turn" hidden>Vom 15. August bis zum <span data-slot="cutoff-label">letzten Messtag</span>
+          waren es 2022 <span data-slot="turn-late-ref">–</span> und 2026 <span data-slot="turn-late-cur">–</span>.</span>
+      </p>
+      <p data-when="turn-level" hidden>
+        Und der Pegel? 2022 stand <span data-slot="turn-river">der Fluss</span> am <span data-slot="low-ref-date">–</span>
+        am tiefsten (<span data-slot="low-ref">–</span>), 2026 am <span data-slot="low-cur-date">–</span>
+        (<span data-slot="low-cur">–</span>).
+        <span data-when="no-recovery" hidden>2026 sank der Fluss also bis in den Herbst weiter, statt sich wie 2022 zu erholen.</span>
+      </p>
+    </div>
   </div>
 </section>
 
@@ -210,11 +238,29 @@
     <!-- Einordnung: Was das Ergebnis bedeutet, wo die Grenzen liegen, wie es weitergeht -->
     <div class="prose prose--after">
       <h3 class="prose__title">Was das bedeutet</h3>
-      <p data-slot="verdict-meaning">Die Einordnung wird berechnet …</p>
+      <!-- Die Zahlen setzt script.js ein (renderVerdictMeaning), data-when wählt die passenden Sätze. -->
+      <p>
+        <span data-when="verdict-Ja" hidden>Die Daten bis zum <span data-slot="cutoff-label">letzten Messtag</span> geben der These recht:
+          Die Flüsse im Mittelland waren 2026 bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.</span>
+        <span data-when="verdict-Teilweise" hidden>Die Daten bis zum <span data-slot="cutoff-label">letzten Messtag</span>
+          geben der These nur teilweise recht.</span>
+        <span data-when="verdict-Nein" hidden>Die Daten bis zum <span data-slot="cutoff-label">letzten Messtag</span>
+          geben der These nicht recht.</span>
+        <span data-when="verdict-turn" hidden>Den grössten Unterschied machte der Spätsommer: 2022 brachte der Regen
+          ab Mitte August die Wende, 2026 blieb er weitgehend aus.</span>
+      </p>
+      <p data-when="normal" hidden>
+        Und verglichen mit gewöhnlicheren Jahren? Im Schnitt der Jahre 2020 bis 2025 waren Limmat, Thur und Rhein bis
+        zu diesem Tag <span data-slot="normal-temp">–</span> warm, 2026 <strong data-slot="normal-temp-cur">–</strong>.
+        Ihr Pegel lag damals im Schnitt bei <span data-slot="normal-level">–</span>, 2026 bei
+        <strong data-slot="normal-level-cur">–</strong>, und es fiel <strong data-slot="normal-rain">–</strong> Regen.
+        <span data-when="normal-extreme" hidden>Kein Jahr seit 2020 war bis zu diesem Tag so warm, so tief und so trocken
+          wie 2026.</span>
+      </p>
       <p>
         Trotzdem ist Vorsicht angebracht. 2026 ist noch nicht vorbei, und viele Werte dieses Jahres hat das BAFU noch
-        nicht abschliessend geprüft. Zwei Jahre sind kein Trend: Mit einem anderen Vergleichsjahr könnte der
-        Unterschied grösser oder kleiner ausfallen. Und die Daten zeigen, <em>dass</em> sich die Jahre unterscheiden,
+        nicht abschliessend geprüft. Unsere Messreihe beginnt 2020: Ob 2026 auch im Vergleich mit Jahrzehnten
+        aussergewöhnlich ist, zeigen diese Daten nicht. Und sie zeigen, <em>dass</em> sich die Jahre unterscheiden,
         nicht <em>warum</em>. Weniger Regen ist eine naheliegende Erklärung für die tiefen Pegel, aber auch Seen,
         Kraftwerke und das Grundwasser beeinflussen, wie viel Wasser ein Fluss führt.
       </p>
@@ -266,6 +312,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=28" defer></script>
+<script src="script.js?v=30" defer></script>
 </body>
 </html>

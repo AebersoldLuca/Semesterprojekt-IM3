@@ -39,6 +39,20 @@
  *   unload.php?parameter=WT                    nur Temperatur (W = nur Wasserstand)
  *   unload.php?years=2022,2026                 nur diese Jahre
  *   unload.php?from=2026-01-01&to=2026-06-30   nur dieser Zeitraum
+ *
+ * Und eine Zusammenfassung pro Fluss und Jahr (für den Vergleich mit dem
+ * Durchschnitt mehrerer Jahre). Jedes Jahr zählt dabei nur vom 1. Januar bis
+ * zum selben Stichtag, dem letzten Messtag des laufenden Jahres:
+ *
+ *   unload.php?summary=1
+ *
+ *   {
+ *     "station_no": "2044", "river_name": "Thur", "year": 2024,
+ *     "water_temperature_mean_c": 12.9,   mittlere Wassertemperatur
+ *     "days_ge_25": 0,                    Tage mit 25 °C oder mehr
+ *     "water_level_deviation_mean_cm": 4.1,  mittlerer Wasserstand ggü. normal
+ *     "precipitation_sum_mm": 1180.4      Regen zusammengezählt (oder null)
+ *   }
  */
 
 // Die Antwort ist JSON, nicht eine Webseite.
@@ -102,6 +116,61 @@ function normalizeRecord(array $row): array
     ];
 }
 
+/** Eine Zeile der Zusammenfassung pro Fluss und Jahr in die vereinbarte Form bringen */
+function normalizeSummary(array $row): array
+{
+    return [
+        'station_no' => (string) $row['station_no'],
+        'river_name' => $row['river_name'],
+        'year' => (int) $row['year'],
+        'water_temperature_mean_c' => $row['wt_mean'] !== null ? round((float) $row['wt_mean'], 2) : null,
+        'days_ge_25' => (int) $row['days_ge_25'],
+        'water_level_deviation_mean_cm' => $row['w_dev'] !== null ? round((float) $row['w_dev'], 1) : null,
+        'precipitation_sum_mm' => (int) $row['rain_days'] > 0 ? round((float) $row['rain_sum'], 1) : null,
+    ];
+}
+
+// ---------------------------------------------------------------------------
+// Die Datenbank-Frage für «eine Zeile pro Station und Tag»
+// ---------------------------------------------------------------------------
+//
+// In der Datenbank stehen Temperatur und Wasserstand in getrennten Zeilen.
+// Für die Website legen wir sie zusammen: eine Zeile pro Station und Tag,
+// mit beiden Werten nebeneinander. Diese Frage brauchen beide Arten von
+// Antworten (Tageswerte und Zusammenfassung), deshalb steht sie nur einmal hier.
+//
+// - Den mittleren Wasserstand (die «Null-Linie») hat load.php schon
+//   ausgerechnet und in station_baselines gespeichert.
+// - Den Regen desselben Tages hängen wir an, gemessen an der Wetterstation,
+//   die zu diesem Fluss gehört. «LEFT JOIN» heisst: Fehlt der Regen an einem
+//   Tag, bleibt der Datensatz trotzdem, nur ohne Regen.
+// - $where enthält die Bedingungen, z.B. «nur 2026». Die Werte selbst kommen
+//   nie direkt in die Frage, sondern als Platzhalter (?). Das schützt die
+//   Datenbank vor Angriffen.
+
+function dailySql(array $where): string
+{
+    return "SELECT s.station_no,
+                   s.river_name,
+                   s.name AS station_name,
+                   s.sort_order,
+                   o.obs_date AS date,
+                   MAX(CASE WHEN o.parameter_code = 'WT' THEN o.value END) AS wt,
+                   MAX(CASE WHEN o.parameter_code = 'WT' THEN o.release_state END) AS wt_state,
+                   MAX(CASE WHEN o.parameter_code = 'W' THEN o.value END) AS w,
+                   MAX(CASE WHEN o.parameter_code = 'W' THEN o.release_state END) AS w_state,
+                   MAX(b.mean_level) AS mean_level,
+                   MAX(p.precipitation_mm) AS rain,
+                   MAX(ws.name) AS rain_station
+            FROM observations AS o
+            JOIN stations AS s ON s.id = o.station_id
+            LEFT JOIN station_baselines AS b ON b.station_id = s.id
+            LEFT JOIN weather_stations AS ws ON ws.river_station_no = s.station_no
+            LEFT JOIN precipitation AS p ON p.weather_station_id = ws.id AND p.obs_date = o.obs_date
+            WHERE " . implode(' AND ', $where) . '
+            GROUP BY s.id, o.obs_date';
+}
+
 // ---------------------------------------------------------------------------
 // Eine ungültige Frage freundlich ablehnen
 // ---------------------------------------------------------------------------
@@ -130,6 +199,16 @@ $parameter = trim($_GET['parameter'] ?? '');
 $years = array_filter(array_map('trim', explode(',', $_GET['years'] ?? '')));
 $from = trim($_GET['from'] ?? '');
 $to = trim($_GET['to'] ?? '');
+$summary = trim($_GET['summary'] ?? '');
+
+// Zusammenfassung: nur «summary=1», und dann ohne weitere Filter.
+if ($summary !== '' && $summary !== '1') {
+    rejectRequest('Für die Zusammenfassung: summary=1');
+}
+
+if ($summary === '1' && ($stations || $parameter !== '' || $years || $from !== '' || $to !== '')) {
+    rejectRequest('summary=1 lässt sich nicht mit anderen Filtern kombinieren.');
+}
 
 // Stationen: genau vier Ziffern. Gibt es die Station nicht, kommt einfach
 // eine leere Liste zurück.
@@ -184,6 +263,29 @@ if ($from !== '' && $to !== '' && $from > $to) {
 try {
     $pdo = new PDO($dsn, $username, $password, $options);
 
+    // Die Zusammenfassung pro Fluss und Jahr.
+    // Stichtag ist der letzte Messtag, z.B. «10-14». Jedes Jahr zählt nur bis
+    // zu diesem Tag, damit alle Jahre gleich lang sind und fair vergleichbar.
+    if ($summary === '1') {
+        $cutoff = $pdo->query("SELECT DATE_FORMAT(MAX(obs_date), '%m-%d') FROM observations")->fetchColumn();
+
+        $statement = $pdo->prepare(
+            'SELECT d.station_no, d.river_name, YEAR(d.date) AS year,
+                    AVG(d.wt) AS wt_mean,
+                    SUM(d.wt >= 25) AS days_ge_25,
+                    AVG(d.w - d.mean_level) * 100 AS w_dev,
+                    SUM(d.rain) AS rain_sum,
+                    COUNT(d.rain) AS rain_days
+             FROM (' . dailySql(['s.is_active = 1', "DATE_FORMAT(o.obs_date, '%m-%d') <= ?"]) . ') AS d
+             GROUP BY d.station_no, d.river_name, d.sort_order, YEAR(d.date)
+             ORDER BY d.sort_order, year'
+        );
+        $statement->execute([$cutoff ?? '12-31']);
+
+        echo json_encode(array_map('normalizeSummary', $statement->fetchAll()), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     // Ohne Jahr und ohne Datum: die letzten 365 Tage.
     if (count($years) === 0 && $from === '' && $to === '') {
         $latest = $pdo->query('SELECT MAX(obs_date) FROM observations')->fetchColumn();
@@ -229,40 +331,8 @@ try {
         $params[] = $to;
     }
 
-    // In der Datenbank stehen Temperatur und Wasserstand in getrennten
-    // Zeilen. Für die Website legen wir sie zusammen: eine Zeile pro Station
-    // und Tag, mit beiden Werten nebeneinander.
-    //
-    // Zusätzlich rechnen wir für jede Station den durchschnittlichen
-    // Wasserstand aus. Das ist die «Null-Linie» für den Vergleich.
-    //
-    // Und wir hängen den Regen desselben Tages an, gemessen an der
-    // Wetterstation, die zu diesem Fluss gehört. «LEFT JOIN» heisst: Fehlt
-    // der Regen an einem Tag, bleibt der Datensatz trotzdem, nur ohne Regen.
-    $sql = "SELECT s.station_no,
-                   s.river_name,
-                   s.name AS station_name,
-                   o.obs_date AS date,
-                   MAX(CASE WHEN o.parameter_code = 'WT' THEN o.value END) AS wt,
-                   MAX(CASE WHEN o.parameter_code = 'WT' THEN o.release_state END) AS wt_state,
-                   MAX(CASE WHEN o.parameter_code = 'W' THEN o.value END) AS w,
-                   MAX(CASE WHEN o.parameter_code = 'W' THEN o.release_state END) AS w_state,
-                   b.mean_level,
-                   MAX(p.precipitation_mm) AS rain,
-                   MAX(ws.name) AS rain_station
-            FROM observations AS o
-            JOIN stations AS s ON s.id = o.station_id
-            LEFT JOIN (
-                SELECT station_id, AVG(value) AS mean_level
-                FROM observations
-                WHERE parameter_code = 'W'
-                GROUP BY station_id
-            ) AS b ON b.station_id = s.id
-            LEFT JOIN weather_stations AS ws ON ws.river_station_no = s.station_no
-            LEFT JOIN precipitation AS p ON p.weather_station_id = ws.id AND p.obs_date = o.obs_date
-            WHERE " . implode(' AND ', $where) . '
-            GROUP BY s.id, o.obs_date
-            ORDER BY s.sort_order, o.obs_date';
+    // Eine Zeile pro Station und Tag (siehe dailySql oben), sortiert wie auf der Website.
+    $sql = dailySql($where) . ' ORDER BY s.sort_order, o.obs_date';
 
     $statement = $pdo->prepare($sql);
     $statement->execute($params);

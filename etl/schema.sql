@@ -1,14 +1,22 @@
 -- =====================================================================
 -- Der Bauplan unserer Datenbank: «Wenn Flüsse Durst haben»
 --
--- Eine Datenbank ist wie ein Ordner mit mehreren Tabellen. Unsere hat sechs:
+-- Eine Datenbank ist wie ein Ordner mit mehreren Tabellen. Unsere hat sieben:
 --
---   parameters        Was wir messen: Wasserstand (W) und Wassertemperatur (WT)
---   stations          Die sechs Messstationen an den Flüssen (vom BAFU)
---   observations      Die Messwerte, ein Wert pro Zeile (rund 30 000 Zeilen)
---   import_runs       Ein Protokoll: Wann wurde importiert, hat es geklappt?
---   weather_stations  Die sechs Wetterstationen (von MeteoSchweiz)
---   precipitation     Der Regen: wie viele Millimeter pro Tag gefallen sind
+--   parameters         Was wir messen: Wasserstand (W) und Wassertemperatur (WT)
+--   stations           Die sechs Messstationen an den Flüssen (vom BAFU)
+--   observations       Die Messwerte, ein Wert pro Zeile (rund 30 000 Zeilen)
+--   station_baselines  Der mittlere Wasserstand jeder Station (wird berechnet)
+--   import_runs        Ein Protokoll: Wann wurde importiert, hat es geklappt?
+--   weather_stations   Die sechs Wetterstationen (von MeteoSchweiz)
+--   precipitation      Der Regen: wie viele Millimeter pro Tag gefallen sind
+--
+-- Warum steht der Regen nicht einfach als dritte Messgrösse in «observations»?
+-- Weil er von einer anderen Quelle und von anderen Stationen kommt: Gemessen
+-- wird an Wetterstationen von MeteoSchweiz, nicht an den Flussstationen des
+-- BAFU. Er ist eine Tagessumme statt eines Tagesmittels, hat keinen
+-- Prüfstatus und gehört zu einem Tag statt zu einem Zeitpunkt. Mit eigenen
+-- Tabellen bleibt jede Tabelle einfach und jede Spalte eindeutig.
 --
 -- Diese Datei wird einmal ausgeführt, um die leeren Tabellen anzulegen,
 -- zum Beispiel in phpMyAdmin im Reiter «SQL». Gefüllt werden die Tabellen
@@ -124,6 +132,29 @@ CREATE TABLE IF NOT EXISTS observations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- Tabelle 5: Der mittlere Wasserstand jeder Station
+--
+-- Die Flüsse liegen unterschiedlich hoch (Rhein 260 m, Aare 570 m über Meer).
+-- Die Website zeigt deshalb, wie viele Zentimeter ein Fluss über oder unter
+-- seinem eigenen Durchschnitt seit 2020 steht. Diesen Durchschnitt rechnet
+-- load.php nach jedem Import einmal aus und speichert ihn hier. So muss
+-- unload.php ihn nicht bei jedem Besuch der Website neu berechnen.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS station_baselines (
+    station_id  INT UNSIGNED  NOT NULL,              -- welche Station (interne Nummer)
+    mean_level  DECIMAL(9,3)  NULL,                  -- mittlerer Wasserstand seit 2020 in m ü.M.
+    updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (station_id),                        -- pro Station genau ein Wert
+    CONSTRAINT fk_baseline_station FOREIGN KEY (station_id) REFERENCES stations (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Gleich jetzt einmal ausrechnen, falls schon Messwerte da sind
+-- (danach erledigt das load.php nach jedem Import).
+INSERT INTO station_baselines (station_id, mean_level)
+SELECT station_id, AVG(value) FROM observations WHERE parameter_code = 'W' GROUP BY station_id
+ON DUPLICATE KEY UPDATE mean_level = VALUES(mean_level);
+
+-- ---------------------------------------------------------------------
 -- Die zwei Messgrössen gleich eintragen.
 --
 -- Nur diese zwei Zeilen schreiben wir von Hand. Stationen und Messwerte
@@ -138,7 +169,7 @@ ON DUPLICATE KEY UPDATE
     description = VALUES(description);
 
 -- ---------------------------------------------------------------------
--- Tabelle 5: Die Wetterstationen von MeteoSchweiz
+-- Tabelle 6: Die Wetterstationen von MeteoSchweiz
 --
 -- Ob ein Fluss tief steht, hängt stark davon ab, wie viel es geregnet hat.
 -- Deshalb gehört zu jedem unserer sechs Flüsse eine Wetterstation, die im
@@ -163,7 +194,7 @@ CREATE TABLE IF NOT EXISTS weather_stations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- Tabelle 6: Der Regen
+-- Tabelle 7: Der Regen
 --
 -- Jede Zeile sagt: An dieser Wetterstation sind an diesem Tag so viele
 -- Millimeter Regen (oder Schnee, geschmolzen gemessen) gefallen.

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=28">
+  <link rel="stylesheet" href="style.css?v=30">
 </head>
 <body data-page="daten">
 
@@ -34,6 +34,7 @@
   </p>
   <nav class="page-nav" aria-label="Inhalt dieser Seite">
     <a href="#kontext">Kontext</a>
+    <a href="#jahre">Alle Jahre</a>
     <a href="#jahresvergleich">Jahresvergleich</a>
     <a href="#regen">Regen und Pegel</a>
     <a href="#vergleich">Explorer</a>
@@ -96,11 +97,38 @@
 </section>
 
 <!-- =============================================================
+     ALLE JAHRE IM VERGLEICH
+     Ist 2026 nur im Vergleich mit 2022 auffällig, oder auch gegenüber
+     den anderen Jahren? Die Tabelle füllt script.js (renderYears) mit der
+     Zusammenfassung pro Jahr aus unload.php?summary=1.
+     ============================================================= -->
+<section class="section" id="jahre" aria-labelledby="jahre-title">
+  <p class="section__label"><span>02</span>Alle Jahre</p>
+  <div class="section__body">
+    <h2 id="jahre-title">Wie aussergewöhnlich ist 2026?</h2>
+    <p class="section__lead">
+      Ein einziges Vergleichsjahr kann täuschen. Deshalb stehen hier alle Jahre seit 2020 nebeneinander, jeweils
+      vom 1. Januar bis zum selben Tag. Gezeigt wird der Durchschnitt der drei Mittellandflüsse Limmat, Thur und Rhein.
+    </p>
+    <div class="table-scroll">
+      <table class="years" id="years-table">
+        <caption data-slot="years-caption">Mittelland, jeweils 1. Januar bis zum letzten Messtag</caption>
+        <tbody><tr><td class="muted">Die Jahre werden geladen …</td></tr></tbody>
+      </table>
+    </div>
+    <p class="note">
+      Orange: 2026. Grau hinterlegt: der Hitzesommer 2022. Die Balken zeigen, wo ein Jahr zwischen dem tiefsten und
+      dem höchsten Wert aller Jahre liegt. Der Pegel ist die Abweichung vom mittleren Pegel seit 2020.
+    </p>
+  </div>
+</section>
+
+<!-- =============================================================
      JAHR GEGEN JAHR
      Eine Grafik pro Fluss: 2022 grau, 2026 weiss, der Unterschied farbig.
      ============================================================= -->
 <section class="section section--wide" id="jahresvergleich" aria-labelledby="jahresvergleich-title">
-  <p class="section__label"><span>02</span>Vergleich</p>
+  <p class="section__label"><span>03</span>Vergleich</p>
   <div class="section__body">
     <h2 id="jahresvergleich-title">Wer hat mehr geschwitzt?</h2>
     <p class="section__lead">
@@ -137,7 +165,7 @@
      jeweils 2022 und 2026 übereinander.
      ============================================================= -->
 <section class="section section--wide" id="regen" aria-labelledby="regen-title">
-  <p class="section__label"><span>03</span>Regen</p>
+  <p class="section__label"><span>04</span>Regen</p>
   <div class="section__body">
     <h2 id="regen-title">Regen und Pegel</h2>
     <p class="section__lead">
@@ -161,7 +189,7 @@
      Alle Daten seit 2020: Flüsse, Messgrösse und Zeitraum frei wählbar.
      ============================================================= -->
 <section class="section section--wide" id="vergleich" aria-labelledby="vergleich-title">
-  <p class="section__label"><span>04</span>Explorer</p>
+  <p class="section__label"><span>05</span>Explorer</p>
   <div class="section__body">
     <h2 id="vergleich-title">Selbst nachschauen</h2>
     <p class="section__lead">Alle Tageswerte seit 2020. Messgrösse, Zeitraum und Flüsse sind frei wählbar.</p>
@@ -210,7 +238,7 @@
      geprüfte Werte) setzt script.js aus den Daten ein.
      ============================================================= -->
 <section class="section" id="methodik" aria-labelledby="methodik-title">
-  <p class="section__label"><span>05</span>Vorgehen</p>
+  <p class="section__label"><span>06</span>Vorgehen</p>
   <div class="section__body prose">
     <h2 id="methodik-title">So sind wir vorgegangen</h2>
     <p>
@@ -239,7 +267,7 @@
       <!-- Der ganze Satz steht in einem <span>, damit die eingesetzte Zahl die Zeile nicht zerteilt -->
       <li><span>Das BAFU prüft seine Messwerte nachträglich. <span data-slot="fact-checked">Ein Teil der Werte von 2026</span>, der Rest kann sich noch ändern. Deshalb lädt jeder Import die letzten 60 Tage neu.</span></li>
       <li>Eine Wetterstation misst den Regen an einem Ort, nicht im ganzen Einzugsgebiet. Beim Rhein, dessen Wasser aus der halben Schweiz kommt, ist das nur eine grobe Annäherung. Ein Regentag zählt von Mitternacht bis Mitternacht Weltzeit, eine Stunde verschoben zum Schweizer Tag.</li>
-      <li>Der Vergleich stützt sich auf ein einziges Referenzjahr. Gegenüber anderen Jahren seit 2020 kann der Unterschied grösser oder kleiner ausfallen.</li>
+      <li>Die Messreihe beginnt 2020. Verglichen wird 2026 mit dem Hitzesommer 2022 und mit dem Schnitt der Jahre 2020 bis 2025. Ob 2026 auch im Vergleich mit Jahrzehnten aussergewöhnlich ist, zeigen unsere Daten nicht.</li>
       <li>2026 ist noch nicht zu Ende, und zwei Jahre sind kein Trend. Die Daten zeigen, dass sich die Jahre unterscheiden, aber nicht warum. Weniger Regen ist eine naheliegende Erklärung für tiefe Pegel, aber nicht die einzige: Auch Verdunstung, Schneeschmelze, Seen und Kraftwerke beeinflussen, wie viel Wasser ein Fluss führt.</li>
     </ul>
 
@@ -301,6 +329,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=28" defer></script>
+<script src="script.js?v=30" defer></script>
 </body>
 </html>

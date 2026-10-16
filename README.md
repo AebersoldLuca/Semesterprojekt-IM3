@@ -18,33 +18,66 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 |---|---|---|
 | Extract | `etl/extract.php` | Tagesmittel beim BAFU (GraphQL) und Regen bei MeteoSchweiz (CSV) abholen |
 | Transform | `etl/transform.php` | jeden Wert beider Quellen prüfen, unplausible verwerfen und zählen, Datum in Schweizer Zeit |
-| Load | `etl/load.php`, `etl/schema.sql` | in sechs MySQL-Tabellen speichern, täglich per Cronjob, letzte 60 Tage neu |
+| Load | `etl/load.php`, `etl/schema.sql` | in sieben MySQL-Tabellen speichern, täglich per Cronjob, letzte 60 Tage neu |
 | Unload | `unload.php` | JSON nach Datenvertrag liefern, mit geprüften Filtern in der URL |
 | Story | `index.html`, `daten.html`, `script.js`, `style.css` | Grafiken mit D3.js, Text und Zahlen aus den Daten berechnet |
 
+## Datenbank und Datenvertrag
+
+Die MySQL-Datenbank (`etl/schema.sql`) hat sieben Tabellen:
+
+| Tabelle | Inhalt |
+|---|---|
+| `parameters` | die zwei Messgrössen des BAFU: Wasserstand (`W`, m ü.M.) und Wassertemperatur (`WT`, °C) |
+| `stations` | die sechs Flussstationen des BAFU mit Name, Fluss, Koordinaten und Reihenfolge auf der Website |
+| `observations` | ein Tagesmittel pro Zeile (Station, Messgrösse, Tag, Wert, Prüfstatus), rund 30 000 Zeilen |
+| `station_baselines` | der mittlere Wasserstand jeder Station seit 2020, nach jedem Import neu berechnet |
+| `weather_stations` | die sechs Wetterstationen von MeteoSchweiz, je einem Fluss zugeordnet |
+| `precipitation` | der Regen pro Tag und Wetterstation in mm |
+| `import_runs` | das Protokoll jedes Imports: Zeitraum, neue, geänderte und verworfene Werte, Fehler |
+
+Der Regen steht bewusst nicht als dritte Messgrösse in `observations`: Er kommt von einer anderen Quelle und von
+anderen Stationen, ist eine Tagessumme statt eines Tagesmittels, hat keinen Prüfstatus und gehört zu einem Tag
+statt zu einem Zeitpunkt. Mit eigenen Tabellen bleibt jede Spalte eindeutig. Ein UNIQUE-Key pro Station und Tag
+verhindert in beiden Fällen doppelte Werte.
+
+`unload.php` liefert eine Zeile pro Flussstation und Tag (Datenvertrag), mit Filtern für Stationen, Messgrösse,
+Jahre und Zeitraum:
+
+```json
+{
+  "station_no": "2044", "river_name": "Thur", "station_name": "Andelfingen", "date": "2026-10-10",
+  "water_temperature_c": 14.4, "water_level_deviation_cm": -23.3, "release_state": null,
+  "precipitation_mm": 11.2, "precipitation_station": "St. Gallen"
+}
+```
+
+Mit `unload.php?summary=1` gibt es zusätzlich eine Zusammenfassung pro Fluss und Jahr (Mittelwerte, Tage ab
+25 °C, Regensumme), jedes Jahr vom 1. Januar bis zum selben Stichtag. Daraus rechnet die Website den
+Durchschnitt 2020–2025 als zweiten Massstab neben dem Hitzesommer 2022.
+
 ## Learnings
 
-- **Eine eigene Datenbank lohnt sich:** Die Website funktioniert auch, wenn die BAFU-API nicht erreichbar ist,
-  und eigene Auswertungen (Monatsmittel, Jahresvergleiche) lassen sich direkt in SQL rechnen.
-- **Den ETL-Prozess klar trennen:** Extract, Transform und Load in eigenen Dateien machen jeden Schritt
-  einzeln testbar und nachvollziehbar.
-- **Wiederholbare Importe:** Ein UNIQUE-Key zusammen mit `INSERT … ON DUPLICATE KEY UPDATE` verhindert Duplikate
-  und übernimmt trotzdem nachträgliche Korrekturen des BAFU.
-- **API zuerst untersuchen:** Mit GraphQL-Introspection (`__schema`) lassen sich die verfügbaren Felder
-  zuverlässig ermitteln, statt sie zu erraten.
-- **Zeitstempel genau lesen:** «UTC, Beginn des Intervalls» bedeutet beim BAFU, dass ein Wert mit `23:00Z`
-  zum *nächsten* Kalendertag gehört.
-- **Sicherheit von Anfang an:** Zugangsdaten gehören in eine eigene, per `.gitignore` ausgeschlossene Datei;
-  Datenbankabfragen laufen nur über Prepared Statements.
-- **Datenjournalistisch sauber arbeiten:** Vergleiche fair machen (gleicher Zeitraum pro Jahr, nur vollständige
-  Jahre für Monatsmittel) und offen sagen, was die Daten *nicht* zeigen – etwa, dass weniger Regen eine
-  naheliegende, aber nicht die einzige Erklärung für tiefe Pegel ist.
-- **Weniger ist mehr:** Eine kurze Story mit drei Grafiken liest sich besser als alles auf einer Seite. Die
-  Details gehören auf eine eigene Datenseite für alle, die tiefer graben wollen.
-- **Erst raten, dann zeigen:** Wer zuerst selbst schätzt, merkt sich das Ergebnis besser. Dafür darf die Seite
-  die Lösung nicht vorher verraten – weder im Titel noch in einer Kennzahl weiter oben.
-- **Beide Jahre gleichzeitig zeigen:** Ein Umschalter zwischen 2022 und 2026 macht den Vergleich schwer. Zwei
-  Linien übereinander mit eingefärbter Differenz zeigen ihn auf einen Blick.
+- **Eine eigene Datenbank macht unabhängig.** Ich hätte die Daten auch direkt im Browser bei der API holen
+  können. Mit der eigenen Datenbank läuft die Seite aber weiter, wenn BAFU oder MeteoSchweiz ausfallen, und ich
+  kann Auswertungen wie den Durchschnitt pro Jahr direkt in SQL rechnen.
+- **Einer API nicht blind vertrauen.** Mit `limit: 10000` hat die BAFU-API zu grosse Antworten einfach
+  abgeschnitten, ohne Fehlermeldung. Gemerkt habe ich das erst, als ich die Zeilen nachgezählt habe. Seither
+  prüfe ich jede Antwort und frage in Zeitfenstern ab.
+- **Zwei Quellen sind zwei Welten.** GraphQL beim BAFU, CSV-Dateien mit Latin-1-Umlauten und Werten ab 1864 bei
+  MeteoSchweiz: Für jede Quelle brauchte ich einen eigenen Weg, aber dieselben Prüfregeln.
+- **Wiederholbare Importe sparen Nerven.** Dank UNIQUE-Key und `INSERT … ON DUPLICATE KEY UPDATE` kann ich den
+  Import beliebig oft laufen lassen. Nichts wird doppelt gespeichert, und Korrekturen des BAFU kommen trotzdem an.
+- **Ein Vergleichsjahr reicht nicht.** Zuerst habe ich 2026 nur mit 2022 verglichen. Erst der Durchschnitt
+  2020–2025 zeigt, dass 2026 nicht nur heisser als der Hitzesommer war, sondern das wärmste und trockenste Jahr
+  der ganzen Messreihe.
+- **Weniger ist mehr.** Meine erste Seite hatte alle Grafiken untereinander. Eine kurze Story mit wenigen
+  Grafiken und eine eigene Datenseite für die Details lesen sich viel besser.
+- **Erst raten, dann zeigen.** Wer zuerst selbst schätzt, merkt sich das Ergebnis besser. Dafür darf die Seite
+  die Lösung vorher nicht verraten. Eine Kennzahl weiter oben hat genau das getan, also habe ich sie gestrichen.
+- **Sicherheit von Anfang an.** Zugangsdaten stehen nur in `config.php`, die nie in Git landet, und alle
+  Datenbankabfragen laufen über Prepared Statements. Vor der Abgabe habe ich die ganze Git-Geschichte nach
+  Passwörtern durchsucht.
 
 ## Schwierigkeiten
 
@@ -89,6 +122,12 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 - **Kanton Aargau:** [Notfallkonzept Trockenheit und Hitze](https://www.ag.ch/media/kanton-aargau/bvu/umwelt-natur/fischerei/informationen-fuer-fischer/notfallkonzept-trockenheit-und-hitze.pdf) – Fischsterben 2022
 - **Kanton Basel-Stadt:** [Temperaturen der Gewässer 2014–2018](https://media.bs.ch/original_file/e8e97aa97f41294b844e6c3232593cd5aa0739ed/temperaturen-gewaesser-bs-2014-2018.pdf) – Temperaturgrenzen für Äschen
 - **AquaPlus im Auftrag des Bundes (NCCS):** [Fischschutzmassnahmen bei Hitzeereignissen](https://www.nccs.admin.ch/dam/nccs/de/dokumente/website/massnahmen/projekte/AquaPlus_Fischschutzmassnahmen_bei_Hitzeereignissen_Arbeitshilfe_2022.pdf.download.pdf/AquaPlus_Fischschutzmassnahmen_bei_Hitzeereignissen_Arbeitshilfe_2022.pdf) (2022)
+
+## KI-Unterstützung
+
+Bei Konzeption, Programmierung, Texten und Dokumentation habe ich Claude Code (Anthropic) als Assistenten
+eingesetzt. Fragestellung, Auswahl der Quellen, Entscheidungen zur Gestaltung und die Prüfung der Ergebnisse
+lagen bei mir.
 
 ## Screenshots
 
