@@ -1,27 +1,34 @@
 <?php
 /**
- * Transform – die Rohdaten prüfen und aufräumen.
+ * Transform – die Rohdaten beider Quellen prüfen und aufräumen.
  *
- * Was vom BAFU kommt, ist noch nicht ganz sauber: Es kann falsche Einheiten,
- * fehlende Werte oder Messfehler geben. Diese Datei prüft jeden einzelnen
- * Wert und bringt ihn in die Form, die unsere Datenbank braucht.
+ * Was vom BAFU und von MeteoSchweiz kommt, ist noch nicht ganz sauber: Es kann
+ * falsche Einheiten, fehlende Werte oder Messfehler geben. Diese Datei prüft
+ * jeden einzelnen Wert und bringt ihn in die Form, die unsere Datenbank braucht.
  *
- * Ein fertiger Messwert sieht zum Beispiel so aus:
+ *   Teil A  Wassertemperatur und Wasserstand (BAFU), zum Beispiel:
+ *           ['station_no' => '2044', 'parameter_code' => 'WT',
+ *            'measured_at' => '2026-09-20 23:00:00', 'obs_date' => '2026-09-21',
+ *            'value' => 16.8, 'release_state' => 1]
  *
- *   ['station_no' => '2044', 'parameter_code' => 'WT',
- *    'measured_at' => '2026-09-20 23:00:00', 'obs_date' => '2026-09-21',
- *    'value' => 16.8, 'release_state' => 1]
+ *   Teil B  Regen (MeteoSchweiz), zum Beispiel:
+ *           ['station_abbr' => 'STG', 'obs_date' => '2026-09-21', 'precipitation_mm' => 12.4]
  *
  * Unsere wichtigste Regel: Wir erfinden nichts. Ein Wert, der nicht stimmen
  * kann, wird weggelassen und gezählt. Auf der Website fehlt er dann einfach.
- * Wir raten nie, was dort hätte stehen können.
+ * Wir raten nie, was dort hätte stehen können. Ein Tag ohne Regenmessung
+ * bleibt deshalb leer: «nicht gemessen» ist etwas anderes als «0 mm».
  */
 
-// Zuerst die Rohdaten von extract.php holen.
+// Zuerst die Rohdaten beider Quellen von extract.php holen.
 $rawData = include __DIR__ . '/extract.php';
 
+// ===========================================================================
+// TEIL A: Wassertemperatur und Wasserstand vom BAFU
+// ===========================================================================
+
 // ---------------------------------------------------------------------------
-// 1. Unsere Prüfregeln
+// A1. Unsere Prüfregeln
 // ---------------------------------------------------------------------------
 //
 // Für jede Messgrösse: In welcher Einheit muss der Wert kommen, und welcher
@@ -55,7 +62,7 @@ $audit = [
 ];
 
 // ---------------------------------------------------------------------------
-// 2. Die Messstationen aufräumen
+// A2. Die Messstationen aufräumen
 // ---------------------------------------------------------------------------
 //
 // Das BAFU nennt die Felder etwas anders als wir (zum Beispiel «riverName»
@@ -90,7 +97,7 @@ foreach ($rawData['stations'] as $raw) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Jeden Messwert prüfen
+// A3. Jeden Messwert prüfen
 // ---------------------------------------------------------------------------
 //
 // Jede Prüfung läuft gleich ab: Stimmt etwas nicht, machen wir einen Strich
@@ -195,18 +202,147 @@ foreach ($rawData['observations'] as $raw) {
 
 $audit['output_rows'] = count($observations);
 
+// ===========================================================================
+// TEIL B: Regen von MeteoSchweiz
+// ===========================================================================
+
+// Die Rohdaten des Regens. War MeteoSchweiz nicht erreichbar, sind die
+// Listen leer, und hier passiert einfach nichts.
+$rawMeteo = $rawData['meteo'];
+
 // ---------------------------------------------------------------------------
-// 4. Das Ergebnis an load.php weitergeben
+// B1. Unsere Prüfregel
 // ---------------------------------------------------------------------------
 //
-// In die Datenbank kommen nur die Stationen und die Messwerte («data»).
-// Der Rest ist zum Nachlesen: unsere Frage, die Regeln und die Strichliste.
+// Regen pro Tag: zwischen 0 und 500 mm. Der Schweizer Rekord liegt bei
+// etwas über 400 mm an einem Tag. Alles darüber muss ein Messfehler sein.
+
+$precipitationRule = ['unit' => 'mm', 'min' => 0.0, 'max' => 500.0];
+
+// Eine Strichliste: Wie viele Werte sind aus welchem Grund weggefallen?
+$meteoAudit = [
+    'input_rows' => 0,         // so viele Werte kamen an
+    'unknown_station' => 0,    // fremde Station
+    'invalid_timestamp' => 0,  // Datum nicht lesbar
+    'missing_value' => 0,      // kein Wert (an diesem Tag nicht gemessen)
+    'not_numeric' => 0,        // keine Zahl
+    'implausible_value' => 0,  // unmöglich viel oder weniger als 0
+    'duplicate' => 0,          // doppelt geliefert
+    'output_rows' => 0,        // so viele Werte sind gut
+];
+
+// ---------------------------------------------------------------------------
+// B2. Die Wetterstationen aufräumen
+// ---------------------------------------------------------------------------
+//
+// Wir übernehmen Name, Koordinaten und Höhe und notieren, zu welchem Fluss
+// die Station gehört. Aus «Zürich / Fluntern» wird dabei nichts gekürzt.
+
+$riverByAbbr = array_flip($rawMeteo['station_map']); // 'STG' → '2044'
+$cleanStations = [];
+
+foreach ($rawMeteo['stations'] as $raw) {
+    $abbr = trim((string) ($raw['station_abbr'] ?? ''));
+
+    if (!isset($riverByAbbr[$abbr])) {
+        continue; // nicht eine unserer sechs Stationen
+    }
+
+    $cleanStations[$abbr] = [
+        'abbr' => $abbr,
+        'name' => trim((string) ($raw['station_name'] ?? $abbr)),
+        'river_station_no' => (string) $riverByAbbr[$abbr],
+        'latitude' => is_numeric($raw['station_coordinates_wgs84_lat'] ?? null) ? round((float) $raw['station_coordinates_wgs84_lat'], 7) : null,
+        'longitude' => is_numeric($raw['station_coordinates_wgs84_lon'] ?? null) ? round((float) $raw['station_coordinates_wgs84_lon'], 7) : null,
+        'elevation' => is_numeric($raw['station_height_masl'] ?? null) ? (float) $raw['station_height_masl'] : null,
+    ];
+}
+
+// ---------------------------------------------------------------------------
+// B3. Jeden Regenwert prüfen
+// ---------------------------------------------------------------------------
+//
+// Wie in Teil A: Stimmt etwas nicht, machen wir einen Strich in der
+// Strichliste und gehen zum nächsten Wert («continue»).
+
+$precipitation = [];
+
+foreach ($rawMeteo['observations'] as $raw) {
+    $meteoAudit['input_rows']++;
+
+    // Gehört der Wert zu einer unserer sechs Wetterstationen?
+    $abbr = (string) ($raw['station_abbr'] ?? '');
+
+    if (!isset($cleanStations[$abbr])) {
+        $meteoAudit['unknown_station']++;
+        continue;
+    }
+
+    // Ist das Datum lesbar? Es muss genau so aussehen: 21.09.2026 00:00
+    $date = DateTimeImmutable::createFromFormat('!d.m.Y H:i', (string) ($raw['reference_timestamp'] ?? ''));
+
+    if ($date === false) {
+        $meteoAudit['invalid_timestamp']++;
+        continue;
+    }
+
+    // Gibt es einen Wert? Ein leeres Feld heisst: an diesem Tag nicht gemessen.
+    $value = trim((string) ($raw['value'] ?? ''));
+
+    if ($value === '') {
+        $meteoAudit['missing_value']++;
+        continue;
+    }
+
+    if (!is_numeric($value)) {
+        $meteoAudit['not_numeric']++;
+        continue;
+    }
+
+    $value = (float) $value;
+
+    // Ist der Wert überhaupt möglich? (siehe Prüfregel oben)
+    if ($value < $precipitationRule['min'] || $value > $precipitationRule['max']) {
+        $meteoAudit['implausible_value']++;
+        continue;
+    }
+
+    // Doppelt geliefert? Jede Station und jeden Tag darf es nur einmal geben.
+    $obsDate = $date->format('Y-m-d');
+    $key = $abbr . '|' . $obsDate;
+
+    if (isset($precipitation[$key])) {
+        $meteoAudit['duplicate']++;
+        continue;
+    }
+
+    // Alle Prüfungen bestanden: Der Wert kommt auf die saubere Liste.
+    $precipitation[$key] = [
+        'station_abbr' => $abbr,
+        'obs_date' => $obsDate,
+        'precipitation_mm' => round($value, 1),
+    ];
+}
+
+$meteoAudit['output_rows'] = count($precipitation);
+
+// ---------------------------------------------------------------------------
+// Das Ergebnis an load.php weitergeben
+// ---------------------------------------------------------------------------
+//
+// In die Datenbank kommen die Stationen und die Messwerte («data»).
+// Die Strichlisten («audit») schreibt load.php in seinen Bericht und ins Protokoll.
 
 return [
-    'question' => '2026 waren die Flüsse im Mittelland bisher wärmer und führten weniger Wasser als im Hitzesommer 2022.',
-    'rules' => $parameterRules,
     'stations' => $stations,
     'data' => array_values($observations),
     'audit' => $audit,
     'extract_audit' => $rawData['audit'],
+    'meteo' => [
+        'stations' => $cleanStations,
+        'data' => array_values($precipitation),
+        'audit' => $meteoAudit,
+        'extract_audit' => $rawMeteo['audit'],
+        'error' => $rawMeteo['error'], // Fehlermeldung, falls MeteoSchweiz nicht erreichbar war
+    ],
 ];

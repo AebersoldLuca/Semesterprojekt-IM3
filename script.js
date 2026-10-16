@@ -36,7 +36,7 @@
  *    6) Die sechs Messstellen
  *    7) Jahr gegen Jahr: eine Grafik pro Fluss
  *    7b) Regen und Pegel
- *    8) Das Urteil, der Tipp, Hervorheben, Daten und Methode
+ *    8) Das Urteil, der Tipp, Hervorheben, Datenstand
  *    9) Selbst nachschauen: alle Daten seit 2020
  *   10) Was beim Darüberfahren und Scrollen passiert
  */
@@ -195,6 +195,22 @@ function appendIcon(selection, name, size) {
 // Ein farbiger Punkt in der Farbe des Flusses (wie in einer Legende).
 const keySwatch = (no, cls = 'key') => el('span', { class: cls, style: `background:${colorOf(no)}`, 'aria-hidden': 'true' });
 
+/*
+ * Kleine Helfer für alle Grafiken, damit derselbe Code nicht mehrmals dasteht:
+ * - valueLine: eine Linie durch Punkte. Fehlt ein Wert (null), reisst die Linie ab.
+ *   xKey sagt, wo beim Punkt das Datum steht ('x' oder 'date').
+ * - lastValue: der letzte Punkt einer Linie, der einen Wert hat (für die Jahreszahl am Ende).
+ * - tooltipRow: eine Zeile im Fenster beim Darüberfahren: Farbpunkt, Name, Wert.
+ * - reducedMotion: Hat jemand am Computer «Bewegung reduzieren» eingestellt?
+ */
+const valueLine = (x, y, xKey = 'x') => d3.line().defined((p) => p.value != null).x((p) => x(p[xKey])).y((p) => y(p.value));
+const lastValue = (pts) => [...pts].reverse().find((p) => p.value != null);
+const tooltipRow = (name, color, value) => el('div', { class: 'tooltip__row' },
+  el('span', { class: 'tooltip__key', style: `background:${color}` }),
+  el('span', { class: 'tooltip__name' }, name),
+  el('span', { class: 'tooltip__value' }, value));
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /** Die Messwerte nach Fluss sortieren: ein Stapel pro Station */
 function groupByStation(records) {
   const map = new Map();
@@ -203,6 +219,23 @@ function groupByStation(records) {
     map.get(r.station_no).push(r);
   }
   return map;
+}
+
+/**
+ * Der letzte Schritt jeder Grafik:
+ * 1. Beschriftungen in der Grafik bekommen einen dunklen Rand, damit man sie
+ *    auch über Linien gut lesen kann («paint-order»: zuerst der Rand, dann die Schrift).
+ * 2. Die Grafik baut sich langsam von links nach rechts auf, sobald man zu
+ *    ihr scrollt. Das macht das CSS (.reveal), ausgelöst von revealOnScroll.
+ *    Zeichnet man die Grafik später neu (z.B. nach einem Klick), erscheint sie sofort.
+ * reveal: false = ohne Aufbau, z.B. in der grossen Ansicht.
+ */
+function finishChart(chart, { reveal = true } = {}) {
+  chart.querySelectorAll('.year-label, .refline-label, .annotation, .hero-sun text').forEach((t) => t.setAttribute('paint-order', 'stroke'));
+  if (reveal) {
+    chart.classList.add('reveal');
+    revealOnScroll(chart);
+  }
 }
 
 /* ---------- 1) Daten holen ---------------------------------------- */
@@ -286,7 +319,6 @@ const state = {
   recent: null,          // die Messwerte der letzten 365 Tage, nach Fluss sortiert
   latest: null,          // der neuste Messtag
   names: new Map(),      // Fluss- und Ortsname zu jeder Stationsnummer
-  compareRecords: null,  // alle Messwerte von 2022 und 2026
   cmp: null,             // der fertige Vergleich 2022 gegen 2026
   compare: { parameter: 'WT', smooth: 7 }, // «Jahr gegen Jahr»: Temperatur, 7-Tage-Mittel
   rain: { no: HERO_STATION }, // «Regen und Pegel» auf der Story-Seite: welcher Fluss
@@ -346,12 +378,12 @@ async function init() {
       state.names.set(r.station_no, { river_name: r.river_name, station_name: r.station_name, rain_station: r.precipitation_station });
     }
   }
-  state.compareRecords = compare;
   state.cmp = buildCompare(compare);
 
   // Jetzt alle Teile der Seite zeichnen, von oben nach unten.
   if (PAGE === 'story') {
     renderStripes();
+    renderStoryText();
     setupDraw();
     renderStats();
     setupRain();
@@ -362,7 +394,6 @@ async function init() {
     renderStationGroups();
     renderMultiples();
     renderRainMultiples();
-    setupMethod();
     renderLegend();
     loadTimeseries();
   }
@@ -473,7 +504,6 @@ const cutoffLabel = (cmp = state.cmp) => fmtDayMonth(parseDate(`${YEARS.cur}-${c
  * übereinander liegen.
  */
 const mdDate = (md) => new Date(Date.UTC(2000, Number(md.slice(0, 2)) - 1, Number(md.slice(3, 5))));
-const fmtMd = d3.utcFormat('%m-%d');
 const delta = (s, k) => s.cur.summary[k] - s.ref.summary[k];
 
 /* ---------- 3b) «Schätz mal!»: die Kurve selbst zeichnen ----------- */
@@ -546,8 +576,14 @@ function renderDraw() {
     .call(d3.axisLeft(y).ticks(small ? 4 : 6).tickSize(-innerW).tickFormat((v) => `${fmt0(v)}°`))
     .call((a) => a.selectAll('.tick text').attr('x', -6));
 
+  // Anmerkung: ab 25 °C wird es für Äschen gefährlich (siehe Text bei «Die Zahlen»).
+  g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(25)).attr('y2', y(25));
+  // Die Beschriftung steht links, wo die Kurve noch tief liegt.
+  g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(25) - 6)
+    .text(small ? '25 °C: kritisch' : '25 °C: ab hier wird es für Äschen gefährlich');
+
   // Die graue Linie von 2022.
-  const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveBasis);
+  const line = valueLine(x, y).curve(d3.curveBasis);
   g.append('path').attr('class', 'draw__ref').attr('d', line(ref));
   const refLast = [...ref].reverse().find((p) => p.value != null);
   if (refLast) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(refLast.x) - 4).attr('y', y(refLast.value) + 18).attr('text-anchor', 'end').text(YEARS.ref);
@@ -568,7 +604,7 @@ function renderDraw() {
   // «Auflösen» geht erst, wenn mindestens 60 % der Wochen gezeichnet sind.
   const update = () => {
     const pts = [anchor && { x: anchor.x, value: anchor.value }, ...d.slots.map((slot, i) => ({ x: slot, value: d.guess[i] }))].filter(Boolean);
-    guessPath.attr('d', d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveMonotoneX)(pts));
+    guessPath.attr('d', valueLine(x, y).curve(d3.curveMonotoneX)(pts));
     const filled = d.guess.filter((v) => v != null).length;
     hint.style('display', filled || d.revealed ? 'none' : null);
     document.getElementById('draw-reveal').disabled = d.revealed || filled < d.slots.length * 0.6;
@@ -582,7 +618,7 @@ function renderDraw() {
     const rest = cur.filter((p) => p.x == null || p.x >= d3.utcDay.offset(d.start, -7));
     const real = g.append('path').attr('class', 'draw__real').attr('d', line(rest));
     const length = real.node().getTotalLength();
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!reducedMotion()) {
       real.attr('stroke-dasharray', `${length} ${length}`).attr('stroke-dashoffset', length)
         .transition().duration(1600).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0)
         .on('end', () => real.attr('stroke-dasharray', null));
@@ -612,6 +648,7 @@ function renderDraw() {
       .on('pointerup pointercancel', () => { d.last = null; });
   }
   update();
+  finishChart(chart);
 }
 
 /**
@@ -682,7 +719,7 @@ function renderStripes() {
   const small = width < 560; // Handy?
   const height = small ? 84 : 112;
   // Hat jemand am Computer «Bewegung reduzieren» eingestellt? Dann keine Fische.
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = reducedMotion();
   // Umrechnung: Tag im Jahr → Position von links nach rechts.
   const x = d3.scaleLinear().domain([0, 366]).range([0, width]);
   const tooltip = getTooltip(figure);
@@ -764,6 +801,7 @@ function renderStripes() {
 
   // Die Flüsse von links nach rechts «einfliessen» lassen.
   requestAnimationFrame(() => requestAnimationFrame(() => figure.classList.add('is-drawn')));
+  finishChart(rowsBox, { reveal: false }); // die Flüsse oben haben ihre eigene Bewegung
 }
 
 /** Der Satz unter den Flüssen: an wie vielen Tagen über 20 °C, 2026 und 2022 */
@@ -774,6 +812,35 @@ function renderHeroFacts(s) {
   box.replaceChildren(icon('sun'),
     el('span', {}, `${YEARS.cur} war die ${state.names.get(s.no).river_name} an `, el('strong', {}, `${fmt0(cur)}\u00a0Tagen`),
       ` über 20\u00a0°C warm, ${YEARS.ref} an ${fmt0(ref)}.`));
+}
+
+/* ---------- 4b) Zahlen in den Texten der Story ------------------- */
+
+/**
+ * Die Texte der Story enthalten einige Zahlen. Sie stehen nicht fest im
+ * HTML, sondern werden hier aus den Daten berechnet. So stimmt der Text auch
+ * nach jedem neuen Import.
+ * - Einstieg: bis zu welchem Tag die Daten von 2026 reichen
+ * - «Die Zahlen»: an wie vielen Tagen ein Mittellandfluss 25 °C oder mehr hatte
+ */
+function renderStoryText() {
+  setSlot('cutoff-label', cutoffLabel());
+
+  // Der Mittellandfluss mit den meisten Tagen ab 25 °C im Jahr 2026.
+  const s = [...inGroup('mittelland')].sort((a, b) => b.cur.summary.days_ge_25 - a.cur.summary.days_ge_25)[0];
+  if (!s) return;
+  const river = state.names.get(s.no).river_name;
+  const cur = s.cur.summary.days_ge_25;
+  const ref = s.ref.summary.days_ge_25;
+  // Der Schluss-Satz hängt davon ab, ob es mehr, gleich viele oder weniger Tage waren.
+  const verdict = cur > ref ? `Für die Fische war ${YEARS.cur} also bisher härter als der Hitzesommer.`
+    : cur === ref ? 'Gleich viele Tage wie im Hitzesommer.'
+      : `Für die Fische war ${YEARS.cur} also bisher weniger hart als der Hitzesommer.`;
+  setSlot('temp-threshold', [
+    `Wie oft lag ein Fluss über dieser Grenze? Die ${river} erreichte ${YEARS.cur} bis ${cutoffLabel()} an `,
+    el('strong', {}, `${fmt0(cur)}\u00a0Tagen`), ` 25\u00a0°C oder mehr, ${YEARS.ref} im selben Zeitraum an ${fmt0(ref)} Tagen. `,
+    `${verdict} Dabei sind das Tagesmittel: Am Nachmittag ist das Wasser oft noch wärmer.`,
+  ]);
 }
 
 /* ---------- 5) Die drei grossen Zahlen ----------------------------- */
@@ -871,10 +938,11 @@ function drawSparklines() {
     const cur = yearPoints(s.cur.records, YEARS.cur, 'WT', 7);
     const x = d3.scaleUtc().domain([new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, 11, 31))]).range([0, width]);
     const y = d3.scaleLinear().domain([0, 28]).range([height - 2, 2]);
-    const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value)).curve(d3.curveMonotoneX);
+    const line = valueLine(x, y).curve(d3.curveMonotoneX);
     const svg = d3.select(node).append('svg').attr('width', width).attr('height', height);
     svg.append('path').attr('d', line(ref)).attr('fill', 'none').attr('stroke', 'var(--year-ref)').attr('stroke-width', 1.25);
     svg.append('path').attr('d', line(cur)).attr('fill', 'none').attr('stroke', colorOf(s.no)).attr('stroke-width', 2);
+    finishChart(node);
   });
 }
 
@@ -984,7 +1052,7 @@ function renderMultiples() {
         el('div', { class: 'multiple__head' }, el('p', { class: 'multiple__title' }, keySwatch(s.no), displayName(s.no)), zoomBtn),
         el('p', { class: 'multiple__sub' }, a != null && b != null
           ? [`Mittel ${isW ? fmtSigned(a) : fmt1(a)} → `, el('strong', {}, f(b))] : 'keine Daten'),
-        el('div', { class: 'chart chart--multiple', tabindex: '0',
+        el('div', { class: 'chart chart--multiple', role: 'group', tabindex: '0',
           'aria-label': `${displayName(s.no)}: ${PARAM_INFO[parameter].label} ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` }));
     })))));
 
@@ -1065,6 +1133,12 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
     .call((a) => a.selectAll('.tick text').attr('x', -6));
   g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
 
+  // Anmerkung bei der Temperatur: die 25-°C-Grenze für Äschen, falls sie in der Grafik liegt.
+  if (!isW && y.domain()[1] >= 25) {
+    g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(25)).attr('y2', y(25));
+    g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(25) - 5).text(large ? '25 °C: kritisch für Äschen' : '25 °C');
+  }
+
   // Die gepunktete Linie beim Stichtag: Bis hierhin wird verglichen.
   const [mm, dd] = state.cmp.cutoff.split('-').map(Number);
   const cx = x(new Date(Date.UTC(2000, mm - 1, dd)));
@@ -1075,14 +1149,13 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
   drawDiff(g, svg.append('defs'), { x, y, refPts: s.refPts, curPts: s.curPts, top: 0, bottom: innerH,
     higher: isW ? 'diff--cool' : 'diff--warm', lower: isW ? 'diff--warm' : 'diff--cool' });
 
-  const line = d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value));
+  const line = valueLine(x, y);
   g.append('path').attr('class', 'line--ref').attr('d', line(s.refPts));
   g.append('path').attr('class', 'line--cur').attr('d', line(s.curPts));
 
   // Die Jahreszahl direkt ans Ende jeder Linie schreiben (statt einer Legende).
-  const lastOf = (pts) => [...pts].reverse().find((p) => p.value != null);
-  const lr = lastOf(s.refPts);
-  const lc = lastOf(s.curPts);
+  const lr = lastValue(s.refPts);
+  const lc = lastValue(s.curPts);
   if (lr) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(lr.x) + 4).attr('y', y(lr.value)).attr('dy', '0.35em').text(YEARS.ref);
   if (lc) g.append('text').attr('class', 'year-label').attr('x', x(lc.x) + 4).attr('y', y(lc.value)).attr('dy', '0.35em').text(YEARS.cur);
 
@@ -1103,20 +1176,17 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
       const dots = [pr && { p: pr, fill: 'var(--year-ref)' }, pc && { p: pc, fill: 'var(--ink)' }].filter(Boolean);
       hover.selectAll('circle').data(dots).join('circle').attr('class', 'hover-dot').attr('r', 4.5)
         .style('fill', (o) => o.fill).attr('cx', x(d)).attr('cy', (o) => y(o.p.value));
-      const row = (label, key, p) => el('div', { class: 'tooltip__row' },
-        el('span', { class: 'tooltip__key', style: `background:${key}` }),
-        el('span', { class: 'tooltip__name' }, label),
-        el('span', { class: 'tooltip__value' }, p ? f(p.value) : 'kein Wert'));
+      const row = (label, color, p) => tooltipRow(label, color, p ? f(p.value) : 'kein Wert');
       const diff = pr && pc ? roundShown(shown(pc.value) - shown(pr.value), isW ? 0 : 1) : null;
       return el('div', {},
         el('div', { class: 'tooltip__date' }, `${state.names.get(s.no).river_name}, ${fmtDayMonth(new Date(d))}`),
         row(String(YEARS.ref), 'var(--year-ref)', pr),
         row(String(YEARS.cur), 'var(--bg)', pc), // dunkler Punkt, weil das Fenster hell ist
-        diff != null ? el('div', { class: 'tooltip__row' }, el('span', {}), el('span', { class: 'tooltip__name' }, 'Differenz'),
-          el('span', { class: 'tooltip__value' }, isW ? fmtCm(diff) : `${fmtSigned(diff, 1)} °C`)) : null);
+        diff != null ? tooltipRow('Differenz', 'transparent', isW ? fmtCm(diff) : `${fmtSigned(diff, 1)} °C`) : null);
     },
     label: (i) => fmtDayMonth(new Date(days[i])),
   });
+  finishChart(chart, { reveal: !large }); // in der grossen Ansicht sofort ganz zeigen
 }
 
 /* ----- Die grosse Ansicht eines Flusses («Gross ↗», auch als Vollbild) ----- */
@@ -1253,6 +1323,18 @@ function rainPoints(records) {
     });
 }
 
+/** Mitte August: 2022 begann es ab diesem Tag wieder zu regnen (siehe Texte und Grafik) */
+const TURN_MD = '08-15';
+
+/** Den Regen in einem Abschnitt des Jahres zusammenzählen, z.B. vom 15. August ('08-15') bis zum Stichtag */
+const rainBetween = (records, fromMd, toMd = state.cmp.cutoff) =>
+  d3.sum(records, (r) => (r.date.slice(5) >= fromMd && r.date.slice(5) <= toMd ? r.precipitation_mm ?? 0 : 0));
+
+/** Der Tag mit dem tiefsten Wasserstand eines Jahres, bis zum Stichtag */
+const lowestLevel = (records) => d3.least(
+  records.filter((r) => r.water_level_deviation_cm != null && r.date.slice(5) <= state.cmp.cutoff),
+  (r) => r.water_level_deviation_cm);
+
 /** Der Pegel eines Jahres als Linie (7-Tage-Mittel), nur bis zum Stichtag */
 const levelPoints = (records, year) => yearPoints(records, year, 'W', 7).filter((p) => p.x <= mdDate(state.cmp.cutoff));
 
@@ -1313,14 +1395,13 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
   const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
   const defs = svg.append('defs');
   const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
-  const line = (y) => d3.line().defined((p) => p.value != null).x((p) => x(p.x)).y((p) => y(p.value));
-  const lastOf = (pts) => [...pts].reverse().find((p) => p.value != null);
+  const line = (y) => valueLine(x, y);
 
   // Die Jahreszahlen ans Ende der Linien schreiben. Liegen sie zu nah
   // beieinander, rücken sie etwas auseinander, damit man beide lesen kann.
   const yearLabels = (y, refPts, curPts) => {
-    const lr = lastOf(refPts);
-    const lc = lastOf(curPts);
+    const lr = lastValue(refPts);
+    const lc = lastValue(curPts);
     if (!lr || !lc) return;
     let yr = y(lr.value);
     let yc = y(lc.value);
@@ -1332,9 +1413,20 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
     g.append('text').attr('class', 'year-label').attr('x', x(lc.x) + 4).attr('y', yc).attr('dy', '0.35em').text(YEARS.cur);
   };
 
+  // Anmerkung: der Spätsommer ab 15. August, als es 2022 wieder regnete.
+  // Ein heller Streifen über beide Teile, in der grossen Grafik mit den Zahlen dazu.
+  const turnX = x(mdDate(TURN_MD));
+  if (turnX < innerW) {
+    g.append('rect').attr('class', 'turn-band').attr('x', turnX).attr('width', innerW - turnX).attr('y', 0).attr('height', innerH);
+    if (!compact) {
+      g.append('text').attr('class', 'annotation').attr('x', innerW - 4).attr('y', rainH - 8).attr('text-anchor', 'end')
+        .text(`ab 15. Aug.: ${YEARS.ref} ${fmt0(rainBetween(s.ref.records, TURN_MD))}, ${YEARS.cur} ${fmtMm(rainBetween(s.cur.records, TURN_MD))}`);
+    }
+  }
+
   // --- Oben: das Regen-Konto ---
   g.append('text').attr('class', 'panel-label').attr('x', 0).attr('y', -8)
-    .text(compact ? 'Regen seit 1. Januar, mm' : 'Regen seit 1. Januar, Tag für Tag zusammengezählt, in mm');
+    .text(compact || small ? 'Regen seit 1. Januar, mm' : 'Regen seit 1. Januar, Tag für Tag zusammengezählt, in mm');
   g.append('g').attr('class', 'axis axis--y')
     .call(d3.axisLeft(yRain).ticks(compact ? 3 : 4).tickSize(-innerW).tickFormat((v) => fmt0(v)))
     .call((a) => a.selectAll('.tick text').attr('x', -6));
@@ -1346,7 +1438,7 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
 
   // --- Unten: der Pegel ---
   g.append('text').attr('class', 'panel-label').attr('x', 0).attr('y', levelTop - 10)
-    .text(compact ? 'Pegel, cm' : 'Pegel, Abweichung vom Mittel in cm, 7-Tage-Mittel');
+    .text(compact ? 'Pegel, cm' : small ? 'Pegel in cm, 7-Tage-Mittel' : 'Pegel, Abweichung vom Mittel in cm, 7-Tage-Mittel');
   g.append('g').attr('class', 'axis axis--y')
     .call(d3.axisLeft(yLevel).ticks(compact ? 3 : 5).tickSize(-innerW).tickFormat((v) => fmtSigned(v)))
     .call((a) => a.selectAll('.tick text').attr('x', -6));
@@ -1356,6 +1448,19 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
   g.append('path').attr('class', 'line--ref').attr('d', line(yLevel)(lvlRef));
   g.append('path').attr('class', 'line--cur').attr('d', line(yLevel)(lvlCur));
   yearLabels(yLevel, lvlRef, lvlCur);
+
+  // Anmerkung: der tiefste Tageswert von 2026, als Punkt mit Beschriftung (nur in der grossen Grafik).
+  // Es ist derselbe Wert wie im Text unter der Grafik. Weil die Linie ein 7-Tage-Mittel ist,
+  // liegt der Punkt eines einzelnen Tages oft etwas unter der Linie.
+  const lowest = lowestLevel(s.cur.records);
+  if (!compact && lowest) {
+    const lx = x(mdDate(lowest.date.slice(5)));
+    const ly = Math.min(innerH, yLevel(lowest.water_level_deviation_cm));
+    const left = lx > innerW - 190; // rechts kein Platz? Dann steht der Text links vom Punkt
+    g.append('circle').attr('class', 'annotation-dot').attr('cx', lx).attr('cy', ly).attr('r', 4.5);
+    g.append('text').attr('class', 'annotation').attr('x', lx + (left ? -10 : 10)).attr('y', ly).attr('dy', '0.35em')
+      .attr('text-anchor', left ? 'end' : 'start').text(`tiefster Tageswert ${YEARS.cur}: ${fmtCm(lowest.water_level_deviation_cm)}`);
+  }
 
   // Die Monate unten.
   g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
@@ -1383,26 +1488,23 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
       const dots = series.map((ser, k) => ({ p: [rr, rc, lr, lc][k], ser })).filter((o) => o.p);
       hover.selectAll('circle').data(dots).join('circle').attr('class', 'hover-dot').attr('r', 4.5)
         .style('fill', (o) => o.ser.fill).attr('cx', x(d)).attr('cy', (o) => o.ser.y(o.p.value));
-      const row = (label, key, value) => el('div', { class: 'tooltip__row' },
-        el('span', { class: 'tooltip__key', style: `background:${key}` }),
-        el('span', { class: 'tooltip__name' }, label),
-        el('span', { class: 'tooltip__value' }, value));
       // Die Differenz aus den gerundeten Werten, damit sie genau aufgeht.
       const rainDiff = rr && rc ? Math.round(rc.value) - Math.round(rr.value) : null;
       const lvlDiff = lr && lc ? roundShown(roundShown(lc.value) - roundShown(lr.value)) : null;
       return el('div', {},
         el('div', { class: 'tooltip__date' }, `${names.river_name}, bis ${fmtDayMonth(d)}`),
         el('div', { class: 'tooltip__section' }, `Regen seit 1. Januar${names.rain_station ? ` (${names.rain_station})` : ''}`),
-        row(String(YEARS.ref), 'var(--year-ref)', rr ? fmtMm(rr.value) : 'kein Wert'),
-        row(String(YEARS.cur), 'var(--bg)', rc ? fmtMm(rc.value) : 'kein Wert'), // dunkler Punkt, weil das Fenster hell ist
-        rainDiff != null ? row('Differenz', 'transparent', `${fmtSigned(rainDiff)} mm`) : null,
+        tooltipRow(String(YEARS.ref), 'var(--year-ref)', rr ? fmtMm(rr.value) : 'kein Wert'),
+        tooltipRow(String(YEARS.cur), 'var(--bg)', rc ? fmtMm(rc.value) : 'kein Wert'), // dunkler Punkt, weil das Fenster hell ist
+        rainDiff != null ? tooltipRow('Differenz', 'transparent', `${fmtSigned(rainDiff)} mm`) : null,
         el('div', { class: 'tooltip__section' }, 'Pegel an diesem Tag'),
-        row(String(YEARS.ref), 'var(--year-ref)', lr ? fmtCm(lr.value) : 'kein Wert'),
-        row(String(YEARS.cur), 'var(--bg)', lc ? fmtCm(lc.value) : 'kein Wert'),
-        lvlDiff != null ? row('Differenz', 'transparent', fmtCm(lvlDiff)) : null);
+        tooltipRow(String(YEARS.ref), 'var(--year-ref)', lr ? fmtCm(lr.value) : 'kein Wert'),
+        tooltipRow(String(YEARS.cur), 'var(--bg)', lc ? fmtCm(lc.value) : 'kein Wert'),
+        lvlDiff != null ? tooltipRow('Differenz', 'transparent', fmtCm(lvlDiff)) : null);
     },
     label: (i) => fmtDayMonth(days[i]),
   });
+  finishChart(chart, { reveal: chart.id !== 'zoom-chart' }); // in der grossen Ansicht sofort ganz zeigen
 }
 
 /* ----- Regen und Pegel auf der Story-Seite ----- */
@@ -1496,6 +1598,47 @@ function renderRain() {
   document.querySelector('.rain__main').classList.toggle('is-locked', !guess.revealed);
   renderGauges(s);
   drawRainChart();
+  renderRainTurn(s);
+}
+
+/**
+ * Der Text unter der Grafik, sobald ein Fluss aufgelöst ist: Was zeigt das
+ * Regen-Konto? Wann liefen die Jahre auseinander, und wann stand der Fluss
+ * am tiefsten? Alle Zahlen kommen aus den Daten dieses Flusses.
+ */
+function renderRainTurn(s) {
+  const box = document.getElementById('rain-turn');
+  if (!box) return;
+  box.hidden = !guessOf(s.no).revealed;
+  if (box.hidden) return;
+
+  const n = state.names.get(s.no);
+  const station = n.rain_station ?? 'der Region';
+  const early = [rainBetween(s.ref.records, '01-01', '08-14'), rainBetween(s.cur.records, '01-01', '08-14')];
+  const late = [rainBetween(s.ref.records, TURN_MD), rainBetween(s.cur.records, TURN_MD)];
+  const lowRef = lowestLevel(s.ref.records);
+  const lowCur = lowestLevel(s.cur.records);
+  // Von einer «Wende» sprechen wir nur, wenn 2022 ab Mitte August deutlich mehr Regen fiel.
+  const turn = late[0] > late[1] * 1.3;
+
+  const rainText = [
+    `Das Regen-Konto zeigt, wann die beiden Jahre auseinanderliefen. Bis Mitte August fielen in ${station} `,
+    `${YEARS.ref} ${fmtMm(early[0])} Regen, ${YEARS.cur} ${fmtMm(early[1])}. `,
+    turn
+      ? [`Dann kam ${YEARS.ref} die Wende: Vom 15. August bis ${cutoffLabel()} regnete es `, el('strong', {}, fmtMm(late[0])),
+        `, ${YEARS.cur} im selben Zeitraum nur `, el('strong', {}, fmtMm(late[1])), '. Im Diagramm ist das der helle Streifen rechts.']
+      : `Vom 15. August bis ${cutoffLabel()} waren es ${YEARS.ref} ${fmtMm(late[0])} und ${YEARS.cur} ${fmtMm(late[1])}.`,
+  ].flat();
+
+  const levelText = lowRef && lowCur ? [
+    `Und der Pegel? ${YEARS.ref} stand die ${n.river_name} am ${fmtDayMonth(parseDate(lowRef.date))} am tiefsten `,
+    `(${fmtCm(lowRef.water_level_deviation_cm)}), ${YEARS.cur} am ${fmtDayMonth(parseDate(lowCur.date))} (${fmtCm(lowCur.water_level_deviation_cm)}). `,
+    // Lag der tiefste Punkt 2026 erst im Herbst, 2022 aber noch im Sommer: Der Fluss hat sich 2026 nicht erholt.
+    lowCur.date.slice(5) >= '09-01' && lowRef.date.slice(5) < '09-01'
+      ? `${YEARS.cur} sank der Fluss also bis in den Herbst weiter, statt sich wie ${YEARS.ref} zu erholen.` : '',
+  ] : [];
+
+  box.replaceChildren(el('h3', { class: 'prose__title' }, 'Was das Regen-Konto zeigt'), el('p', {}, rainText), el('p', {}, levelText));
 }
 
 /**
@@ -1643,8 +1786,9 @@ function guessFeedback(value, actual) {
 
 /**
  * Gibt einem Teil der Seite die Klasse «is-visible», sobald er zu einem
- * Drittel im Bild ist. Das CSS startet dann die Bewegung (die Becher
- * füllen sich). Das passiert nur einmal, beim ersten Hinscrollen.
+ * Drittel im Bild ist. Das CSS startet dann die Bewegung: Die Becher
+ * füllen sich, die Grafiken bauen sich auf (siehe finishChart).
+ * Das passiert nur einmal, beim ersten Hinscrollen.
  */
 function revealOnScroll(node) {
   if (node.classList.contains('is-visible') || node.dataset.revealWatch) return;
@@ -1708,7 +1852,7 @@ function renderRainMultiples() {
         el('div', { class: 'multiple__head' }, el('p', { class: 'multiple__title' }, keySwatch(s.no), displayName(s.no)), zoomBtn),
         el('p', { class: 'multiple__sub' }, `Regen ${n.rain_station ?? ''}: ${fmt0(ref)} → `, el('strong', {}, fmtMm(cur)),
           change != null ? ` (${fmtSigned(change)} %)` : ''),
-        el('div', { class: 'chart chart--rain-small', tabindex: '0',
+        el('div', { class: 'chart chart--rain-small', role: 'group', tabindex: '0',
           'aria-label': `${displayName(s.no)}: Regen und Pegel ${YEARS.ref} und ${YEARS.cur}. Pfeiltasten wechseln den Tag.` }));
     })))));
 
@@ -1772,6 +1916,7 @@ function renderVerdict(cmp = state.cmp) {
   const warm = isWarmer;
   const low = isLower;
   const { word, cls, lead } = verdictOf(cmp);
+  renderVerdictMeaning(cmp, word);
 
   const pct = (s) => (s.cur.summary.count ? `${fmt0((s.cur.summary.checked / s.cur.summary.count) * 100)} %` : '–');
   // Der Regen gehört nicht zur These, hilft aber beim Erklären: wie viel Prozent mehr oder weniger als 2022.
@@ -1811,6 +1956,26 @@ function renderVerdict(cmp = state.cmp) {
       'Die Alpenflüsse gehören nicht zur These. Sie zeigen, dass Schmelzwasser anders auf einen heissen Sommer reagiert. ',
       'Der Regen (MeteoSchweiz) zählt nicht fürs Urteil, er hilft nur beim Erklären.'));
   applyFocus();
+}
+
+/**
+ * Der erste Satz der Einordnung unter dem Urteil. Er passt sich dem Urteil an
+ * und erwähnt den Spätsommer nur, wenn die Daten das hergeben.
+ */
+function renderVerdictMeaning(cmp, word) {
+  const cutoff = cutoffLabel(cmp);
+  const ml = inGroup('mittelland', cmp);
+  const intro = {
+    Ja: `Die Daten bis ${cutoff} geben der These recht: Die Flüsse im Mittelland waren ${YEARS.cur} bisher wärmer und führten weniger Wasser als im Hitzesommer ${YEARS.ref}.`,
+    Teilweise: `Die Daten bis ${cutoff} geben der These nur teilweise recht.`,
+    Nein: `Die Daten bis ${cutoff} geben der These nicht recht.`,
+  }[word];
+  const lateRef = d3.sum(ml, (s) => rainBetween(s.ref.records, TURN_MD));
+  const lateCur = d3.sum(ml, (s) => rainBetween(s.cur.records, TURN_MD));
+  const turn = lateRef > lateCur * 1.3
+    ? ` Den grössten Unterschied machte der Spätsommer: ${YEARS.ref} brachte der Regen ab Mitte August die Wende, ${YEARS.cur} blieb er weitgehend aus.`
+    : '';
+  setSlot('verdict-meaning', intro + turn);
 }
 
 /* ----- Zuerst tippen, dann das Urteil ----- */
@@ -1916,128 +2081,13 @@ function applyFocus() {
   }
 }
 
-/** Bei «Daten und Methode»: Datenstand und Zeitraum aus den Daten eintragen */
+/** Datenstand (oben auf beiden Seiten) sowie Zeitraum und geprüfte Werte bei «So sind wir vorgegangen» eintragen */
 function renderFacts() {
   setSlot('data-stand', fmtDotted(parseDate(state.latest)));
   setSlot('fact-range', `1. Januar 2020 bis ${longDate(state.latest)}`);
   const checked = d3.sum(state.cmp.stations, (s) => s.cur.summary.checked);
   const total = d3.sum(state.cmp.stations, (s) => s.cur.summary.count);
-  if (total) setSlot('fact-checked', `${fmt0((checked / total) * 100)} % der Tage vollständig vom BAFU geprüft`);
-}
-
-/* ----- Daten und Methode: der Weg der Daten zum Anklicken ----- */
-
-/**
- * Die sechs Schritte vom BAFU bis zur Grafik. Klickt man einen an, wird er
- * orange, und darunter steht, was in diesem Schritt passiert.
- * Die Beispiele sind echte Werte, die diese Seite gerade geladen hat.
- */
-const METHOD_STEPS = {
-  api: {
-    title: 'Zwei Quellen', tech: 'BAFU (GraphQL) · MeteoSchweiz (CSV)',
-    text: 'Das Bundesamt für Umwelt veröffentlicht die Messwerte seiner Flussstationen über eine offene GraphQL-API. Wir nutzen die Tagesmittel von Wassertemperatur und Wasserstand. MeteoSchweiz stellt die Werte seiner Wetterstationen als CSV-Dateien bereit. Daraus nehmen wir den Regen pro Tag. Beides seit dem 1. Januar 2020.',
-    live: () => [el('p', { class: 'step-panel__label' }, 'Unsere sechs Flüsse und ihre Wetterstationen'),
-      el('ul', { class: 'step-list' }, STATIONS.filter((st) => state.names.has(st.no)).map((st) =>
-        el('li', {}, el('b', {}, displayName(st.no)),
-          el('small', {}, `Nr. ${st.no} · ${st.group === 'mittelland' ? 'Mittelland' : 'Alpen'}`
-            + (state.names.get(st.no).rain_station ? ` · Regen: ${state.names.get(st.no).rain_station}` : '')))))],
-  },
-  extract: {
-    title: 'Extract', tech: 'etl/extract.php · etl/extract_meteo.php',
-    text: 'Jeden Morgen startet ein Cronjob den Import. Das PHP-Script fragt die BAFU-API per POST ab. Pro Abfrage liefert sie höchstens 10 000 Zeilen, deshalb wird der Zeitraum in Fenster von 666 Tagen aufgeteilt. Für den Regen lädt ein zweites Script pro Wetterstation eine CSV-Datei von MeteoSchweiz und behält nur die Spalte mit dem Regen.',
-    live: () => {
-      const r = latestRecord((rec) => rec.precipitation_mm != null);
-      return [el('p', { class: 'step-panel__label' }, 'Die Abfrage an die BAFU-API (GraphQL)'),
-        el('pre', {}, 'data_1day_mean(where: {\n  station: { no: { _in: ["2243", "2044", …] } }\n  parameterName: { _in: ["W", "WT"] }\n  timestamp: { _gte: $from, _lt: $to }\n}) {\n  parameterName unitSymbol timestamp value releaseState\n}'),
-        r ? el('p', { class: 'step-panel__label' }, `Eine Zeile aus der CSV-Datei von MeteoSchweiz (${r.precipitation_station}, gekürzt)`) : null,
-        r ? el('pre', {}, `station_abbr;reference_timestamp;…;rka150d0;…\n…;${fmtDotted(parseDate(r.date))} 00:00;…;${r.precipitation_mm};…`) : null];
-    },
-  },
-  transform: {
-    title: 'Transform',
-    tech: 'etl/transform.php · etl/transform_meteo.php',
-    text: 'Jede Zeile wird geprüft: bekannte Station, richtige Einheit, gültiger Zeitstempel, plausibler Wert. Aus der UTC-Zeit der API wird der Kalendertag in Schweizer Zeit. Beim Regen sind 0 bis 500 mm pro Tag erlaubt, ein Tag ohne Messung bleibt leer statt 0 mm. Was nicht passt, wird verworfen und gezählt, nie geschätzt.',
-    live: () => {
-      const r = latestRecord((rec) => rec.water_temperature_c != null);
-      if (!r) return [];
-      const utcStart = fmtIsoDate(d3.utcDay.offset(parseDate(r.date), -1));
-      return [el('p', { class: 'step-panel__label' }, `Ein echter Messwert der ${r.river_name}: so kommt er von der API …`),
-        el('pre', {}, JSON.stringify({ station: { no: r.station_no }, parameterName: 'WT', unitSymbol: '°C', timestamp: `${utcStart}T23:00:00Z`, value: r.water_temperature_c }, null, 2)),
-        el('p', { class: 'step-panel__arrow' }, '↓ Einheit geprüft, Wert plausibel, 23:00 UTC = neuer Tag in Schweizer Zeit'),
-        el('p', { class: 'step-panel__label' }, '… und so wird er gespeichert'),
-        el('pre', {}, JSON.stringify({ station_no: r.station_no, parameter_code: 'WT', obs_date: r.date, value: r.water_temperature_c }, null, 2))];
-    },
-  },
-  load: {
-    title: 'Load', tech: 'etl/load.php · MySQL',
-    text: 'Die geprüften Werte kommen in unsere eigene MySQL-Datenbank. Eine UNIQUE-Regel verhindert doppelte Messwerte. Jeder Import lädt die letzten 60 Tage neu, damit Korrekturen von BAFU und MeteoSchweiz ankommen. Fällt eine Quelle aus, bleiben die Daten hier erhalten.',
-    live: () => [el('p', { class: 'step-panel__label' }, 'Sechs Tabellen'),
-      el('ul', { class: 'step-list' },
-        el('li', {}, el('b', {}, 'observations'), el('small', {}, 'ein Messwert pro Zeile')),
-        el('li', {}, el('b', {}, 'stations'), el('small', {}, 'die sechs Messstationen')),
-        el('li', {}, el('b', {}, 'parameters'), el('small', {}, 'W und WT mit Einheit')),
-        el('li', {}, el('b', {}, 'precipitation'), el('small', {}, 'Regen pro Tag und Wetterstation')),
-        el('li', {}, el('b', {}, 'weather_stations'), el('small', {}, 'die sechs Wetterstationen')),
-        el('li', {}, el('b', {}, 'import_runs'), el('small', {}, 'Protokoll jedes Imports')))],
-  },
-  unload: {
-    title: 'Unload', tech: 'unload.php → JSON',
-    text: 'unload.php liest nur aus unserer Datenbank und liefert JSON nach dem Datenvertrag: eine Station an einem Tag, neun Felder, der Regen inklusive. Mit Filtern in der URL kommt nur, was die Grafik braucht.',
-    live: () => {
-      const r = latestRecord(() => true);
-      return r ? [el('p', { class: 'step-panel__label' }, `Ein Datensatz, so wie ihn diese Seite gerade geladen hat`),
-        el('pre', {}, JSON.stringify(r, null, 2)),
-        el('p', { class: 'step-panel__arrow' }, `Beispiel: unload.php?years=${YEARS.ref},${YEARS.cur}`)] : [];
-    },
-  },
-  story: {
-    title: 'Story', tech: 'script.js · D3.js',
-    text: 'script.js holt die Daten mit fetch() und zeichnet die Grafiken mit D3.js. BAFU und MeteoSchweiz werden im Browser nie aufgerufen. Alle Zahlen im Text werden aus den Daten berechnet und ändern sich nach jedem Import.',
-    live: () => [el('p', { class: 'step-panel__label' }, 'Auf dieser Seite gerade geladen'),
-      el('p', { class: 'step-count' }, `${fmt0(loadedRecordCount())} Datensätze`)],
-  },
-};
-
-/** Der neuste Messwert (für die Beispiele oben) */
-function latestRecord(test) {
-  const all = [...state.recent.values()].flat().filter(test);
-  return d3.greatest(all, (r) => r.date);
-}
-
-/** Wie viele Datensätze hat diese Seite insgesamt geladen? */
-function loadedRecordCount() {
-  const recent = d3.sum([...state.recent.values()], (list) => list.length);
-  return recent + state.compareRecords.length + (state.ts.records?.length ?? 0);
-}
-
-/** Die sechs Schritte anklickbar machen (auch mit den Pfeiltasten) */
-function setupMethod() {
-  const tabs = [...document.querySelectorAll('#pipeline .pipeline__step')];
-  const select = (tab, focus = false) => {
-    const index = tabs.indexOf(tab);
-    tabs.forEach((t, i) => {
-      t.setAttribute('aria-selected', String(t === tab));
-      t.tabIndex = t === tab ? 0 : -1;
-      t.classList.toggle('is-done', i < index);
-    });
-    document.getElementById('pipeline').style.setProperty('--progress', `${(index / (tabs.length - 1)) * 100}%`);
-    if (focus) tab.focus();
-    const step = METHOD_STEPS[tab.dataset.step];
-    document.getElementById('step-panel').replaceChildren(
-      el('h3', {}, step.title, el('span', {}, step.tech)),
-      el('p', {}, step.text),
-      el('div', { class: 'step-panel__live' }, step.live()));
-  };
-  tabs.forEach((tab, i) => {
-    tab.addEventListener('click', () => select(tab));
-    tab.addEventListener('keydown', (event) => {
-      const dir = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-      if (!dir) return;
-      event.preventDefault();
-      select(tabs[(i + dir + tabs.length) % tabs.length], true);
-    });
-  });
-  select(tabs[0]);
+  if (total) setSlot('fact-checked', `Von den Tagen ${YEARS.cur} sind erst ${fmt0((checked / total) * 100)}\u00a0% vollständig geprüft`);
 }
 
 /* ---------- 9) Selbst nachschauen: alle Daten seit 2020 ----------- */
@@ -2183,7 +2233,7 @@ function renderTimeseries() {
     g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(20) - 5).text('20 °C');
   }
 
-  const line = d3.line().defined((p) => p.value != null).x((p) => x(p.date)).y((p) => y(p.value));
+  const line = valueLine(x, y, 'date');
   const lines = g.append('g');
   for (const s of series) {
     lines.append('path').attr('class', 'series-line').attr('data-station', s.no).style('stroke', colorOf(s.no)).attr('d', line(s.points));
@@ -2209,17 +2259,16 @@ function renderTimeseries() {
       rows.sort((a, b) => b.p.value - a.p.value);
       return el('div', {},
         el('div', { class: 'tooltip__date' }, fmtDateTooltip(new Date(date))),
-        rows.map(({ s, p }) => el('div', { class: 'tooltip__row' },
-          el('span', { class: 'tooltip__key', style: `background:${colorOf(s.no)}` }),
-          el('span', { class: 'tooltip__name' }, state.names.get(s.no).river_name,
-            el('small', {}, ts.parameter === 'N'
-              ? `Regen in ${p.rainStation ?? '–'}`
-              : `${state.names.get(s.no).station_name} · ${RELEASE_LABEL[p.release] ?? 'ohne Status'}`)),
-          el('span', { class: 'tooltip__value' }, f(p.value)))));
+        rows.map(({ s, p }) => tooltipRow(
+          [state.names.get(s.no).river_name, el('small', {}, ts.parameter === 'N'
+            ? `Regen in ${p.rainStation ?? '–'}`
+            : `${state.names.get(s.no).station_name} · ${RELEASE_LABEL[p.release] ?? 'ohne Status'}`)],
+          colorOf(s.no), f(p.value))));
     },
     label: (i) => fmtDateLong(new Date(dates[i])),
   });
   applyFocus();
+  finishChart(chart);
 }
 
 /** Wie das Datum unter der Grafik steht: «3. Juli», «Jul» oder «2024», je nach Zeitraum */

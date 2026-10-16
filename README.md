@@ -6,22 +6,18 @@
 
 ## Kurzbeschreibung
 
-Die DataStory prüft die Hypothese, dass die Flüsse im Mittelland 2026 bisher wärmer waren und weniger Wasser
+Die DataStory prüft die These, dass die Flüsse im Mittelland 2026 bisher wärmer waren und weniger Wasser
 führten als im Hitzesommer 2022. Grundlage sind Tagesmittel von Wassertemperatur und Wasserstand an sechs
-Messstationen des BAFU sowie der tägliche Niederschlag an sechs passenden Wetterstationen von MeteoSchweiz.
-Ein PHP-ETL-Prozess lädt die Daten täglich per Cronjob in eine eigene MySQL-Datenbank; die Website liest nur
-daraus. Die Story (`index.html`) führt mit wenigen Grafiken und markanten Zahlen durch die These und lässt
-Lesende mitmachen: Sie zeichnen den Temperaturverlauf selbst, schätzen pro Fluss die Regenmenge 2026 im
-Messbecher und tippen auf das Urteil, bevor die Daten die Antwort zeigen. Die Datenseite (`daten.html`) zeigt
-alle Details – Jahresvergleich und «Regen-Konto» pro Fluss, ein frei filterbarer Explorer seit 2020 und den
-Weg der Daten – mit drei Alpenflüssen als Vergleichsgruppe.
+BAFU-Stationen sowie der Niederschlag von MeteoSchweiz. Ein PHP-ETL-Prozess speichert die Daten täglich in einer
+eigenen MySQL-Datenbank. Die Story lässt Lesende Kurven zeichnen und Regenmengen schätzen; eine Datenseite zeigt
+alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 
 ## Aufbau
 
 | Teil | Dateien | Aufgabe |
 |---|---|---|
-| Extract | `etl/extract.php`, `etl/extract_meteo.php` | Tagesmittel beim BAFU (GraphQL) und Regen bei MeteoSchweiz (CSV) abholen |
-| Transform | `etl/transform.php`, `etl/transform_meteo.php` | jeden Wert prüfen, unplausible verwerfen und zählen, Datum in Schweizer Zeit |
+| Extract | `etl/extract.php` | Tagesmittel beim BAFU (GraphQL) und Regen bei MeteoSchweiz (CSV) abholen |
+| Transform | `etl/transform.php` | jeden Wert beider Quellen prüfen, unplausible verwerfen und zählen, Datum in Schweizer Zeit |
 | Load | `etl/load.php`, `etl/schema.sql` | in sechs MySQL-Tabellen speichern, täglich per Cronjob, letzte 60 Tage neu |
 | Unload | `unload.php` | JSON nach Datenvertrag liefern, mit geprüften Filtern in der URL |
 | Story | `index.html`, `daten.html`, `script.js`, `style.css` | Grafiken mit D3.js, Text und Zahlen aus den Daten berechnet |

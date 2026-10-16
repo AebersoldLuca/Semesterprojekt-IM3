@@ -6,10 +6,7 @@
  * ein automatischer Zeitplan (ein «Cronjob») sie auf. Dann passiert:
  *
  *   load.php fragt transform.php → transform.php fragt extract.php
- *   → extract.php holt die Flussdaten beim BAFU
- *
- *   load.php fragt transform_meteo.php → transform_meteo.php fragt extract_meteo.php
- *   → extract_meteo.php holt den Regen bei MeteoSchweiz
+ *   → extract.php holt die Flussdaten beim BAFU und den Regen bei MeteoSchweiz
  *
  * Danach speichert load.php alles in der Datenbank.
  *
@@ -20,12 +17,12 @@
  *
  * Ablauf:
  *
- *   1. Nachschauen, bis wann wir schon Daten haben
+ *   1. Nachschauen, bis wann wir schon Daten haben (Flüsse und Regen)
  *   2. Ab dort (minus 60 Tage) neue Daten holen lassen
  *   3. Die sechs Stationen speichern
  *   4. Die Messwerte speichern: neue dazu, korrigierte überschreiben
  *   5. Notieren, wie der Import gelaufen ist
- *   6. Dasselbe nochmals für den Regen von MeteoSchweiz
+ *   6. Dasselbe nochmals für den Regen: Wetterstationen und Regenwerte
  *
  * Diese Datei gibt nichts an eine andere Datei zurück. Ihr Ergebnis steht
  * danach in der Datenbank.
@@ -111,7 +108,20 @@ if ($fullImport || count($latestDays) < 12) {
     $startDate = max($firstDay, $startDate);
 }
 
-echo "Lade ab {$startDate}.\n";
+// Dasselbe für den Regen: Auch MeteoSchweiz korrigiert manchmal nachträglich.
+// Es müssten 6 Wetterstationen sein. Fehlt etwas, alles ab 2020 holen.
+$latestRainDays = $pdo->query(
+    'SELECT MAX(obs_date) FROM precipitation GROUP BY weather_station_id'
+)->fetchAll(PDO::FETCH_COLUMN);
+
+if ($fullImport || count($latestRainDays) < 6) {
+    $meteoStartDate = $firstDay;
+} else {
+    $meteoStartDate = date('Y-m-d', strtotime(min($latestRainDays) . " -{$revisionDays} days"));
+    $meteoStartDate = max($firstDay, $meteoStartDate);
+}
+
+echo "Flüsse: lade ab {$startDate}. Regen: lade ab {$meteoStartDate}.\n";
 
 // ---------------------------------------------------------------------------
 // 5. Im Protokoll notieren: «Import gestartet»
@@ -135,10 +145,12 @@ $runId = (int) $pdo->lastInsertId(); // die Nummer dieses Imports
 // ---------------------------------------------------------------------------
 //
 // Hier läuft die Kette los: transform.php holt die Rohdaten bei extract.php,
-// extract.php fragt beim BAFU. Das Startdatum von oben wird dabei mitgegeben.
+// extract.php fragt beim BAFU und bei MeteoSchweiz. Die beiden Startdaten von
+// oben werden dabei mitgegeben.
 //
 // Ist das BAFU nicht erreichbar, brechen wir ab. Die Daten, die schon in
 // unserer Datenbank sind, bleiben unverändert. Die Website läuft weiter.
+// (Fällt nur MeteoSchweiz aus, geht es weiter, siehe Abschnitt 10.)
 
 try {
     $result = include __DIR__ . '/transform.php';
@@ -324,38 +336,19 @@ $pdo->exec('DELETE FROM import_runs WHERE started_at < UTC_TIMESTAMP() - INTERVA
 // 10. Der Regen von MeteoSchweiz
 // ---------------------------------------------------------------------------
 //
-// Jetzt dasselbe für den Regen, in fünf kurzen Schritten:
-//   a) ab welchem Tag holen?   b) im Protokoll notieren
-//   c) Daten holen lassen      d) Wetterstationen speichern
-//   e) Regenwerte speichern
+// Jetzt dasselbe für den Regen. Die Daten hat extract.php schon geholt und
+// transform.php schon geprüft (unter «meteo»). Hier speichern wir sie:
+//   a) im Protokoll notieren   b) Wetterstationen speichern
+//   c) Regenwerte speichern    d) im Protokoll notieren: fertig
 //
 // Klappt hier etwas nicht, ist das kein Weltuntergang: Die Flussdaten von
 // oben sind schon gespeichert. Wir notieren den Fehler und machen weiter.
 
 echo "\nRegen von MeteoSchweiz:\n";
 
-// Für den Regen gibt es nochmals bis zu 5 Minuten Zeit (die Uhr startet neu).
-if (PHP_SAPI !== 'cli') {
-    set_time_limit(300);
-}
+$meteo = $result['meteo'];
 
-// a) Ab welchem Tag holen? Wie oben: ab dem letzten gespeicherten Tag minus
-//    60 Tage, denn auch MeteoSchweiz korrigiert manchmal nachträglich.
-//    Ist noch kein Regen gespeichert, holen wir alles ab dem 1. Januar 2020.
-$latestRainDays = $pdo->query(
-    'SELECT MAX(obs_date) FROM precipitation GROUP BY weather_station_id'
-)->fetchAll(PDO::FETCH_COLUMN);
-
-if ($fullImport || count($latestRainDays) < 6) {
-    $meteoStartDate = $firstDay;
-} else {
-    $meteoStartDate = date('Y-m-d', strtotime(min($latestRainDays) . " -{$revisionDays} days"));
-    $meteoStartDate = max($firstDay, $meteoStartDate);
-}
-
-echo "Lade ab {$meteoStartDate}.\n";
-
-// b) Im Protokoll notieren: «Regen-Import gestartet».
+// a) Im Protokoll notieren: «Regen-Import gestartet».
 $pdo->prepare(
     "INSERT INTO import_runs (started_at, status, mode, aggregation, window_from, window_to)
      VALUES (UTC_TIMESTAMP(), 'running', :mode, 'meteo_rka150d0', :window_from, CURDATE())"
@@ -367,10 +360,12 @@ $pdo->prepare(
 $meteoRunId = (int) $pdo->lastInsertId();
 
 try {
-    // c) Die geprüften Regendaten holen lassen.
-    $meteo = include __DIR__ . '/transform_meteo.php';
+    // War MeteoSchweiz nicht erreichbar? Dann gibt es nichts zu speichern.
+    if ($meteo['error'] !== null) {
+        throw new RuntimeException($meteo['error']);
+    }
 
-    // d) Die Wetterstationen speichern: neu anlegen oder auffrischen.
+    // b) Die Wetterstationen speichern: neu anlegen oder auffrischen.
     //    «ON DUPLICATE KEY UPDATE» erledigt beides in einem Schritt.
     $saveWeatherStation = $pdo->prepare(
         'INSERT INTO weather_stations (abbr, name, river_station_no, latitude, longitude, elevation)
@@ -390,7 +385,7 @@ try {
         $weatherIds[$abbr] = (int) $findWeatherStation->fetchColumn();
     }
 
-    // e) Die Regenwerte speichern, wieder alles oder nichts (Transaktion).
+    // c) Die Regenwerte speichern, wieder alles oder nichts (Transaktion).
     //    Gibt es den Tag schon, wird der Wert überschrieben.
     $insertRain = $pdo->prepare(
         'INSERT INTO precipitation (weather_station_id, obs_date, precipitation_mm, import_run_id)
@@ -429,7 +424,7 @@ try {
 
     $pdo->commit();
 
-    // Im Protokoll notieren: «Regen-Import fertig».
+    // d) Im Protokoll notieren: «Regen-Import fertig».
     $meteoFailed = $meteo['extract_audit']['failed_files'];
     $meteoStatus = $meteoFailed === 0 ? 'success' : 'partial';
 

@@ -7,11 +7,11 @@
   <meta name="description" content="Eine DataStory mit Messdaten von BAFU und MeteoSchweiz: Waren die Flüsse im Mittelland 2026 wärmer und führten sie weniger Wasser als im Hitzesommer 2022?">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#07090c">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307090c'/%3E%3Crect x='6' y='18' width='4' height='8' fill='%233a7bd5'/%3E%3Crect x='14' y='12' width='4' height='14' fill='%23ece9e2'/%3E%3Crect x='22' y='6' width='4' height='20' fill='%23ff4d1c'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20fill='%2307090c'/%3E%3Crect%20x='6'%20y='18'%20width='4'%20height='8'%20fill='%233a7bd5'/%3E%3Crect%20x='14'%20y='12'%20width='4'%20height='14'%20fill='%23ece9e2'/%3E%3Crect%20x='22'%20y='6'%20width='4'%20height='20'%20fill='%23ff4d1c'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=25">
+  <link rel="stylesheet" href="style.css?v=27">
 </head>
 <body data-page="story">
 
@@ -58,12 +58,40 @@
 <main>
 
 <!-- =============================================================
+     EINSTIEG
+     Was im Sommer 2022 passiert ist und welche Frage diese Seite stellt.
+     Die Jahreszahl am Schluss setzt script.js aus den Daten ein.
+     ============================================================= -->
+<section class="section" id="einstieg" aria-labelledby="einstieg-title">
+  <p class="section__label"><span>01</span>Einstieg</p>
+  <div class="section__body prose">
+    <h2 id="einstieg-title">Ein Sommer als Massstab</h2>
+    <p>
+      Im Sommer 2022 wurden die Schweizer Flüsse warm und leer wie selten. Mitte August führten viele kleinere und
+      mittlere Flüsse so wenig Wasser, wie es statistisch nur alle zwei bis zehn Jahre vorkommt. Auch Aare, Limmat und
+      Rhein lagen markant unter ihrem üblichen Pegel (<a href="https://www.bafu.admin.ch/de/hitzewelle-und-trockenheit" rel="noopener">BAFU</a>). Im Kanton Aargau
+      starben Fische, weil das Wasser zu warm wurde (<a href="https://www.ag.ch/media/kanton-aargau/bvu/umwelt-natur/fischerei/informationen-fuer-fischer/notfallkonzept-trockenheit-und-hitze.pdf" rel="noopener">Kanton Aargau</a>). MeteoSchweiz zählt
+      diesen Sommer zu den wärmsten seit Messbeginn 1864 (<a href="https://www.meteoschweiz.admin.ch/service-und-publikationen/publikationen/berichte-und-bulletins/2022/klimabulletin-sommer-2022.html" rel="noopener">MeteoSchweiz</a>).
+    </p>
+    <p>
+      Dann drehte das Wetter: Ab Mitte August regnete es wieder, und die Flüsse erholten sich. Seither gilt 2022 als
+      Hitzesommer, an dem sich andere Jahre messen lassen müssen.
+    </p>
+    <p>
+      Vier Jahre später stellt sich die Frage: War 2026 noch schlimmer? Wir haben die täglichen Messwerte von sechs
+      Flüssen gesammelt – Wassertemperatur, Wasserstand und Regen – und beide Jahre Tag für Tag verglichen, jeweils
+      vom 1. Januar bis zum <span data-slot="cutoff-label">letzten Messtag</span>. Weiter reichen die Daten von 2026 noch nicht.
+    </p>
+  </div>
+</section>
+
+<!-- =============================================================
      «SCHÄTZ MAL!»
      Man zeichnet selbst, wie warm die Limmat 2026 war, und deckt dann
      die echte Kurve auf.
      ============================================================= -->
 <section class="section section--wide" id="schaetzen" aria-labelledby="schaetzen-title">
-  <p class="section__label"><span>01</span>Mitmachen</p>
+  <p class="section__label"><span>02</span>Mitmachen</p>
   <div class="section__body">
     <h2 id="schaetzen-title">Schätz mal!</h2>
     <p class="section__lead">
@@ -71,7 +99,7 @@
       Wie ging es 2026 weiter? Zeichne die Kurve mit der Maus oder dem Finger weiter.
     </p>
     <div class="draw">
-      <div class="chart draw__chart" id="draw-chart"
+      <div class="chart draw__chart" id="draw-chart" role="group"
            aria-label="Zeichenfläche: Wassertemperatur 2022 und Januar 2026. Mit «Direkt zur Lösung» erscheint die echte Kurve."></div>
       <div class="draw__actions">
         <button type="button" class="btn btn--primary" id="draw-reveal" disabled>Auflösen</button>
@@ -88,13 +116,20 @@
      Drei grosse Zahlen. Sie werden aus den Daten berechnet.
      ============================================================= -->
 <section class="section" id="zahlen" aria-labelledby="zahlen-title">
-  <p class="section__label"><span>02</span>Die Zahlen</p>
+  <p class="section__label"><span>03</span>Die Zahlen</p>
   <div class="section__body">
     <h2 id="zahlen-title">Was 2026 anders war</h2>
-    <p class="section__intro">
-      Der Sommer 2022 war laut MeteoSchweiz der zweitwärmste seit Messbeginn 1864. Flüsse wie Limmat und Rhein
-      wurden über 25 Grad warm und führten extremes Niedrigwasser, Fische starben. Dieser Sommer ist der Massstab.
-    </p>
+    <div class="prose">
+      <p>
+        Für Fische ist die Wassertemperatur eine Frage des Überlebens. Warmes Wasser enthält weniger Sauerstoff.
+        Kälteliebende Arten wie Bachforelle und Äsche geraten im Hochsommer unter Stress: Für Äschen wird es ab
+        25 °C gefährlich, 26 °C während eines ganzen Tages können tödlich sein
+        (<a href="https://media.bs.ch/original_file/e8e97aa97f41294b844e6c3232593cd5aa0739ed/temperaturen-gewaesser-bs-2014-2018.pdf" rel="noopener">Kanton Basel-Stadt</a>).
+      </p>
+      <p data-slot="temp-threshold">
+        Wie oft wurde diese Schwelle 2026 überschritten? Die Zahlen werden berechnet …
+      </p>
+    </div>
     <p class="section__lead" data-slot="stats-lead">
       Verglichen wird in beiden Jahren derselbe Zeitraum, vom 1. Januar bis zum letzten Messtag.
     </p>
@@ -111,9 +146,18 @@
      rechts den Regen seit 1. Januar und den Pegel, 2022 und 2026.
      ============================================================= -->
 <section class="section section--wide" id="regen" aria-labelledby="regen-title">
-  <p class="section__label"><span>03</span>Regen</p>
+  <p class="section__label"><span>04</span>Regen</p>
   <div class="section__body">
     <h2 id="regen-title" data-slot="rain-title">Regen und Pegel</h2>
+    <div class="prose">
+      <p>
+        Ein Fluss ist so voll, wie sein Einzugsgebiet ihn füllt: mit Regen, mit Schmelzwasser aus Schnee und
+        Gletschern, mit Wasser aus Seen und aus dem Grundwasser. Im Mittelland zählt vor allem der Regen. In den Alpen
+        ist es anders: In heissen Sommern schmelzen die Gletscher stärker, und Gebirgsflüsse führen dann sogar mehr
+        Wasser (<a href="https://www.bafu.admin.ch/de/hitzewelle-und-trockenheit" rel="noopener">BAFU</a>). Deshalb laufen Aare, Rhône und Ticino in dieser
+        Geschichte nur als Kontrollgruppe mit.
+      </p>
+    </div>
     <p class="section__lead" data-slot="rain-lead">
       Wie viel es regnet, bestimmt, wie viel Wasser ein Fluss führt.
     </p>
@@ -126,13 +170,15 @@
     <div class="rain">
       <div class="gauges" id="rain-gauges" aria-live="polite"></div>
       <div class="rain__main">
-        <div class="chart chart--rain" id="rain-chart" tabindex="0"
+        <div class="chart chart--rain" id="rain-chart" role="group" tabindex="0"
              aria-label="Regen seit 1. Januar und Pegel des Flusses, 2022 und 2026. Pfeiltasten wechseln den Tag."></div>
         <!-- Solange noch nicht aufgelöst ist, liegt dieser Hinweis über der verschwommenen Grafik -->
         <p class="rain__lock" aria-hidden="true">Erst schätzen, dann zeigt die Grafik,<br>wie es wirklich war.</p>
       </div>
     </div>
     <p class="note" id="rain-note"></p>
+    <!-- Erscheint erst nach dem Auflösen: Was das Regen-Konto zeigt (Zahlen aus den Daten) -->
+    <div class="prose prose--after" id="rain-turn" hidden></div>
   </div>
 </section>
 
@@ -141,7 +187,7 @@
      Zuerst selbst tippen, dann zeigt die Seite das Ergebnis.
      ============================================================= -->
 <section class="section" id="urteil" aria-labelledby="urteil-title">
-  <p class="section__label"><span>04</span>Urteil</p>
+  <p class="section__label"><span>05</span>Urteil</p>
   <div class="section__body">
     <h2 id="urteil-title">Stimmt die These?</h2>
 
@@ -160,6 +206,26 @@
     <div class="verdict" id="verdict">
       <p class="muted">Urteil wird berechnet …</p>
     </div>
+
+    <!-- Einordnung: Was das Ergebnis bedeutet, wo die Grenzen liegen, wie es weitergeht -->
+    <div class="prose prose--after">
+      <h3 class="prose__title">Was das bedeutet</h3>
+      <p data-slot="verdict-meaning">Die Einordnung wird berechnet …</p>
+      <p>
+        Trotzdem ist Vorsicht angebracht. 2026 ist noch nicht vorbei, und viele Werte dieses Jahres hat das BAFU noch
+        nicht abschliessend geprüft. Zwei Jahre sind kein Trend: Mit einem anderen Vergleichsjahr könnte der
+        Unterschied grösser oder kleiner ausfallen. Und die Daten zeigen, <em>dass</em> sich die Jahre unterscheiden,
+        nicht <em>warum</em>. Weniger Regen ist eine naheliegende Erklärung für die tiefen Pegel, aber auch Seen,
+        Kraftwerke und das Grundwasser beeinflussen, wie viel Wasser ein Fluss führt.
+      </p>
+      <p>
+        Fachleute rechnen damit, dass Hitze- und Trockenperioden mit dem Klimawandel häufiger werden. Im Hochrhein
+        stieg die Wassertemperatur schon 2003 und 2018 über 25 °C. Kantone reagieren: Im Hochrhein wurden
+        Kaltwasserzonen geschaffen, in die sich Fische bei Hitze zurückziehen können
+        (<a href="https://www.nccs.admin.ch/dam/nccs/de/dokumente/website/massnahmen/projekte/AquaPlus_Fischschutzmassnahmen_bei_Hitzeereignissen_Arbeitshilfe_2022.pdf.download.pdf/AquaPlus_Fischschutzmassnahmen_bei_Hitzeereignissen_Arbeitshilfe_2022.pdf" rel="noopener">AquaPlus im Auftrag des Bundes</a>). Ob 2026 als neuer Massstab in
+        Erinnerung bleibt, zeigt sich erst am Jahresende. Die Messwerte auf dieser Seite werden jeden Morgen aktualisiert.
+      </p>
+    </div>
     </div>
   </div>
 </section>
@@ -173,12 +239,12 @@
   <div class="section__body">
     <a class="more" href="daten.html">
       <span class="more__kicker">Für alle, die es genau wissen wollen</span>
-      <span class="more__title" id="mehr-title">Alle Daten ansehen</span>
+      <h2 class="more__title" id="mehr-title">Alle Daten ansehen</h2>
       <span class="more__list">
         <span>Alle sechs Flüsse im Jahresvergleich</span>
         <span>Regen und Pegel für jeden Fluss</span>
         <span>Jeder Messwert seit 2020 zum Selbst-Erkunden</span>
-        <span>Wie die Daten auf diese Seite kommen</span>
+        <span>Quellen, Vorgehen und Grenzen</span>
       </span>
       <span class="btn btn--primary more__btn">Zu den Daten <span class="more__arrow" aria-hidden="true">→</span></span>
     </a>
@@ -200,6 +266,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=25" defer></script>
+<script src="script.js?v=27" defer></script>
 </body>
 </html>
