@@ -80,22 +80,15 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 
 ## Ressourcen
 
-- **Datenquelle:** Bundesamt für Umwelt BAFU, Datensatz «Hydrologische Beobachtungen» –
-  https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations
-- **Datenquelle Regen:** MeteoSchweiz Open Data, SwissMetNet, Parameter `rka150d0` (Tagessumme Niederschlag) –
-  https://opendatadocs.meteoswiss.ch/a-data-groundbased/a1-automatic-weather-stations
-- **BAFU-API und Dokumentation** (Filter, Pagination, Ratenbegrenzung, Lizenz):
-  https://api.data-platform.cloud.bafu.admin.ch/ · GraphQL-Endpunkt https://data.bafu.admin.ch/api
-- **Lizenz der Daten:** «Freie Nutzung. Quellenangabe ist Pflicht.» (opendata.swiss, MeteoSchweiz Open Data)
-- **D3.js v7** für die Visualisierungen: https://d3js.org/
-- **Schriften** (Google Fonts): Schibsted Grotesk, Instrument Serif, JetBrains Mono – https://fonts.google.com/
-- **PHP-Handbuch, PDO:** https://www.php.net/manual/de/book.pdo.php
-- **MySQL-Referenz, `INSERT … ON DUPLICATE KEY UPDATE`:**
-  https://dev.mysql.com/doc/refman/8.0/en/insert-on-duplicate.html
-- **Hostpoint Support, Cronjobs einrichten:**
-  https://support.hostpoint.ch/de/produkte/webhosting/haeufig-gestellte-fragen/cronjobs-einrichten
-- **Unterrichtsmaterial und Beispielprojekt** des Moduls «Interaktive Medien 3», FHGR
-- **KI-Unterstützung:** Claude Code (Anthropic) bei Konzeption, Programmierung und Dokumentation
+- **Datenquelle Flüsse:** Bundesamt für Umwelt BAFU, [Hydrologische Beobachtungen](https://api.data-platform.cloud.bafu.admin.ch/dataproduct-water-observations),
+  Tagesmittel von Wassertemperatur und Wasserstand (GraphQL-API, freie Nutzung mit Quellenangabe)
+- **Datenquelle Regen:** MeteoSchweiz, [Automatische Wetterstationen](https://opendatadocs.meteoswiss.ch/a-data-groundbased/a1-automatic-weather-stations),
+  Tagessumme Niederschlag `rka150d0` (Open Data, CSV)
+- **BAFU:** [Hitzewelle und Trockenheit](https://www.bafu.admin.ch/de/hitzewelle-und-trockenheit) – Niedrigwasser und Gletscherflüsse im Sommer 2022
+- **MeteoSchweiz:** [Klimabulletin Sommer 2022](https://www.meteoschweiz.admin.ch/service-und-publikationen/publikationen/berichte-und-bulletins/2022/klimabulletin-sommer-2022.html)
+- **Kanton Aargau:** [Notfallkonzept Trockenheit und Hitze](https://www.ag.ch/media/kanton-aargau/bvu/umwelt-natur/fischerei/informationen-fuer-fischer/notfallkonzept-trockenheit-und-hitze.pdf) – Fischsterben 2022
+- **Kanton Basel-Stadt:** [Temperaturen der Gewässer 2014–2018](https://media.bs.ch/original_file/e8e97aa97f41294b844e6c3232593cd5aa0739ed/temperaturen-gewaesser-bs-2014-2018.pdf) – Temperaturgrenzen für Äschen
+- **AquaPlus im Auftrag des Bundes (NCCS):** [Fischschutzmassnahmen bei Hitzeereignissen](https://www.nccs.admin.ch/dam/nccs/de/dokumente/website/massnahmen/projekte/AquaPlus_Fischschutzmassnahmen_bei_Hitzeereignissen_Arbeitshilfe_2022.pdf.download.pdf/AquaPlus_Fischschutzmassnahmen_bei_Hitzeereignissen_Arbeitshilfe_2022.pdf) (2022)
 
 ## Screenshots
 

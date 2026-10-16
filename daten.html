@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
 </head>
 <body data-page="daten">
 
@@ -236,7 +236,8 @@
 
     <h3 class="prose__title">Grenzen</h3>
     <ul class="method-notes">
-      <li>Das BAFU prüft seine Messwerte nachträglich. <span data-slot="fact-checked">Ein Teil der Werte von 2026</span>, der Rest kann sich noch ändern. Deshalb lädt jeder Import die letzten 60 Tage neu.</li>
+      <!-- Der ganze Satz steht in einem <span>, damit die eingesetzte Zahl die Zeile nicht zerteilt -->
+      <li><span>Das BAFU prüft seine Messwerte nachträglich. <span data-slot="fact-checked">Ein Teil der Werte von 2026</span>, der Rest kann sich noch ändern. Deshalb lädt jeder Import die letzten 60 Tage neu.</span></li>
       <li>Eine Wetterstation misst den Regen an einem Ort, nicht im ganzen Einzugsgebiet. Beim Rhein, dessen Wasser aus der halben Schweiz kommt, ist das nur eine grobe Annäherung. Ein Regentag zählt von Mitternacht bis Mitternacht Weltzeit, eine Stunde verschoben zum Schweizer Tag.</li>
       <li>Der Vergleich stützt sich auf ein einziges Referenzjahr. Gegenüber anderen Jahren seit 2020 kann der Unterschied grösser oder kleiner ausfallen.</li>
       <li>2026 ist noch nicht zu Ende, und zwei Jahre sind kein Trend. Die Daten zeigen, dass sich die Jahre unterscheiden, aber nicht warum. Weniger Regen ist eine naheliegende Erklärung für tiefe Pegel, aber nicht die einzige: Auch Verdunstung, Schneeschmelze, Seen und Kraftwerke beeinflussen, wie viel Wasser ein Fluss führt.</li>
@@ -300,6 +301,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=27" defer></script>
+<script src="script.js?v=28" defer></script>
 </body>
 </html>
