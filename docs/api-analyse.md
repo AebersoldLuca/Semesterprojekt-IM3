@@ -136,4 +136,32 @@ und Abflusstypen vertreten und für die W und WT seit 2020 lückenlos vorliegen 
 | 2068 | Ticino – Riazzino | Tessingebiet | Alpensüdseite |
 | 2091 | Rhein – Rheinfelden | Rheingebiet | grosser Fluss unterhalb der Aaremündung |
 
-Die Auswahl ist im Code als Konfiguration hinterlegt (`STATIONS` in `etl/extract.php`) und kann dort geändert werden.
+Die Auswahl ist im Code als Konfiguration hinterlegt (`$stationNos` in `etl/extract.php`) und kann dort geändert werden.
+
+## 9. Zweite Quelle: Niederschlag von MeteoSchweiz
+
+Um tiefe Pegel einordnen zu können, kommt der tägliche Niederschlag dazu. MeteoSchweiz bietet dafür keine
+Abfrage-API, sondern Open-Data-Dateien pro Wetterstation (SwissMetNet), auffindbar über die STAC-API von
+data.geo.admin.ch (Collection `ch.meteoschweiz.ogd-smn`).
+
+| Punkt | Befund |
+|---|---|
+| Format | CSV, Trennzeichen `;`, Kodierung ISO-8859-1 (Latin-1), über 40 Spalten |
+| Dateien pro Station | `…_d_recent.csv` (laufendes Jahr, täglich ergänzt) und `…_d_historical.csv` (bis Ende Vorjahr, ab Messbeginn, mehrere MB) |
+| Verwendete Spalte | `rka150d0` = Niederschlag, Tagessumme 0 bis 0 Uhr UTC, in mm (`rre150d0` wäre 6 bis 6 Uhr UTC) |
+| Datum | `reference_timestamp` im Format `21.09.2026 00:00` |
+| Lücken | leeres Feld = nicht gemessen; wird verworfen, nicht als 0 mm gespeichert |
+| Lizenz | Open Government Data, Quellenangabe Pflicht |
+
+Zu jeder Flussstation gehört eine Wetterstation in ihrem Gebiet:
+
+| Fluss (BAFU-Nr.) | Wetterstation | Bemerkung |
+|---|---|---|
+| Limmat (2243) | SMA Zürich / Fluntern | |
+| Thur (2044) | STG St. Gallen | |
+| Rhein (2091) | BUS Buchs / Aarau | Annäherung: das Einzugsgebiet umfasst die halbe Schweiz |
+| Aare (2019) | MER Meiringen | |
+| Rhône (2009) | SIO Sion | |
+| Ticino (2068) | BIA Biasca | |
+
+Die Zuordnung steht in `etl/extract_meteo.php` (`$weatherStations`).

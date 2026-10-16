@@ -1,7 +1,8 @@
 # Cronjob für den automatischen Import
 
 `etl/load.php` startet die ganze Kette (Extract → Transform → Load) und läuft **einmal täglich**.
-Tagesmittel entstehen einmal pro Tag; ein häufigerer Import bringt keine neuen Werte, belastet aber die BAFU-API.
+Es holt zuerst die Flussdaten beim BAFU, danach den Regen bei MeteoSchweiz – ein einziger Cronjob genügt.
+Tagesmittel entstehen einmal pro Tag; ein häufigerer Import bringt keine neuen Werte, belastet aber die Quellen.
 
 Empfohlene Zeit: **06:30 Uhr**. Das Tagesmittel des Vortags ist dann sicher verfügbar.
 
@@ -30,8 +31,11 @@ Ohne gültiges Token antwortet `load.php` mit HTTP 403. Ist `$etlToken` leer, is
 ## Von Hand aufrufen
 
 Dieselbe URL im Browser öffnen. `load.php` zeigt dann als Text, was passiert ist:
-wie viele Zeilen die API geliefert hat, wie viele neu, geändert oder unverändert sind, und den jüngsten Messwert
-pro Fluss.
+wie viele Zeilen die API geliefert hat, wie viele neu, geändert oder unverändert sind, den jüngsten Messwert
+pro Fluss und den jüngsten Regenwert pro Wetterstation.
+
+Ist noch kein Regen gespeichert (z.B. direkt nach dem Anlegen der Tabellen mit `etl/schema.sql`), holt der
+nächste Import automatisch alles ab 2020. Das dauert beim ersten Mal rund eine halbe Minute länger.
 
 Alles ab 2020 neu laden (z.B. nach einer Änderung an `transform.php`):
 
@@ -44,6 +48,8 @@ https://DEINE-DOMAIN/etl/load.php?token=DEIN-TOKEN&full=1
 | Situation | Verhalten |
 |---|---|
 | BAFU-API nicht erreichbar | 3 Wiederholungen (2 s, 4 s, 8 s), dann Abbruch. Der Lauf steht als `failed` in `import_runs`, **die gespeicherten Daten bleiben unverändert**, die Website zeigt sie weiter. |
+| MeteoSchweiz nicht erreichbar | Die Flussdaten sind schon gespeichert. Der Regen-Lauf steht als `failed` in `import_runs`, der nächste Lauf holt ihn nach. |
+| Einzelne Regen-Datei fehlerhaft | Die übrigen Stationen werden trotzdem geladen, Regen-Lauf = `partial`. |
 | Einzelnes Zeitfenster fehlerhaft | Die übrigen Fenster werden trotzdem geladen, Lauf = `partial`. Der nächste Lauf holt die Lücke nach. |
 | Zu viele Zeilen für ein Fenster | Das Fenster wird automatisch halbiert. |
 | Datenbank nicht erreichbar | Abbruch vor dem Abruf der API mit der Meldung «Verbindung fehlgeschlagen». |

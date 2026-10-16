@@ -10,8 +10,21 @@ Die DataStory prüft die Hypothese, dass die Flüsse im Mittelland 2026 bisher w
 führten als im Hitzesommer 2022. Grundlage sind Tagesmittel von Wassertemperatur und Wasserstand an sechs
 Messstationen des BAFU sowie der tägliche Niederschlag an sechs passenden Wetterstationen von MeteoSchweiz.
 Ein PHP-ETL-Prozess lädt die Daten täglich per Cronjob in eine eigene MySQL-Datenbank; die Website liest nur
-daraus. Die Story (`index.html`) zeigt die wichtigsten Zahlen und drei Grafiken, die Datenseite (`daten.html`)
-alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
+daraus. Die Story (`index.html`) führt mit wenigen Grafiken und markanten Zahlen durch die These und lässt
+Lesende mitmachen: Sie zeichnen den Temperaturverlauf selbst, schätzen pro Fluss die Regenmenge 2026 im
+Messbecher und tippen auf das Urteil, bevor die Daten die Antwort zeigen. Die Datenseite (`daten.html`) zeigt
+alle Details – Jahresvergleich und «Regen-Konto» pro Fluss, ein frei filterbarer Explorer seit 2020 und den
+Weg der Daten – mit drei Alpenflüssen als Vergleichsgruppe.
+
+## Aufbau
+
+| Teil | Dateien | Aufgabe |
+|---|---|---|
+| Extract | `etl/extract.php`, `etl/extract_meteo.php` | Tagesmittel beim BAFU (GraphQL) und Regen bei MeteoSchweiz (CSV) abholen |
+| Transform | `etl/transform.php`, `etl/transform_meteo.php` | jeden Wert prüfen, unplausible verwerfen und zählen, Datum in Schweizer Zeit |
+| Load | `etl/load.php`, `etl/schema.sql` | in sechs MySQL-Tabellen speichern, täglich per Cronjob, letzte 60 Tage neu |
+| Unload | `unload.php` | JSON nach Datenvertrag liefern, mit geprüften Filtern in der URL |
+| Story | `index.html`, `daten.html`, `script.js`, `style.css` | Grafiken mit D3.js, Text und Zahlen aus den Daten berechnet |
 
 ## Learnings
 
@@ -28,7 +41,14 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 - **Sicherheit von Anfang an:** Zugangsdaten gehören in eine eigene, per `.gitignore` ausgeschlossene Datei;
   Datenbankabfragen laufen nur über Prepared Statements.
 - **Datenjournalistisch sauber arbeiten:** Vergleiche fair machen (gleicher Zeitraum pro Jahr, nur vollständige
-  Jahre für Monatsmittel) und offen sagen, was die Daten *nicht* zeigen.
+  Jahre für Monatsmittel) und offen sagen, was die Daten *nicht* zeigen – etwa, dass weniger Regen eine
+  naheliegende, aber nicht die einzige Erklärung für tiefe Pegel ist.
+- **Weniger ist mehr:** Eine kurze Story mit drei Grafiken liest sich besser als alles auf einer Seite. Die
+  Details gehören auf eine eigene Datenseite für alle, die tiefer graben wollen.
+- **Erst raten, dann zeigen:** Wer zuerst selbst schätzt, merkt sich das Ergebnis besser. Dafür darf die Seite
+  die Lösung nicht vorher verraten – weder im Titel noch in einer Kennzahl weiter oben.
+- **Beide Jahre gleichzeitig zeigen:** Ein Umschalter zwischen 2022 und 2026 macht den Vergleich schwer. Zwei
+  Linien übereinander mit eingefärbter Differenz zeigen ihn auf einen Blick.
 
 ## Schwierigkeiten
 
@@ -46,6 +66,13 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
   gespeichert und auf der Website ausgewiesen.
 - **Verdächtige Messwerte:** Bei Brienzwiler meldet die API im März 2026 drei Tage lang exakt 0.00 °C. Diese
   ungeprüften Werte werden als vermuteter Sensorausfall verworfen und erscheinen als Lücke.
+- **Regentag und Flusstag:** MeteoSchweiz zählt einen Regentag von Mitternacht bis Mitternacht Weltzeit, das
+  BAFU rechnet in Schweizer Zeit. Die eine Stunde Verschiebung ist für Wochen- und Jahressummen vernachlässigbar
+  und auf der Website offen ausgewiesen.
+- **Eine Wetterstation pro Fluss:** Eine Station misst den Regen an einem Ort, nicht im ganzen Einzugsgebiet.
+  Beim Rhein, dessen Wasser aus der halben Schweiz kommt, ist das nur eine Annäherung.
+- **Spoiler im eigenen Text:** Die Regen-Kennzahl weiter oben verriet das Ergebnis des Schätzspiels. Sie wurde
+  gestrichen; Titel, Einleitung und Grafik erscheinen pro Fluss erst nach dem Auflösen.
 - **Unvollständiges laufendes Jahr:** Für faire Jahresvergleiche wird jedes Jahr nur vom 1. Januar bis zum
   gleichen Stichtag gemittelt.
 - **PHP-Eigenheit:** Numerische Array-Keys wie `'2019'` werden automatisch zu Zahlen – die Stationsnummer
@@ -63,7 +90,7 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
   https://opendatadocs.meteoswiss.ch/a-data-groundbased/a1-automatic-weather-stations
 - **BAFU-API und Dokumentation** (Filter, Pagination, Ratenbegrenzung, Lizenz):
   https://api.data-platform.cloud.bafu.admin.ch/ · GraphQL-Endpunkt https://data.bafu.admin.ch/api
-- **Lizenz der Daten:** «Freie Nutzung. Quellenangabe ist Pflicht.» (opendata.swiss)
+- **Lizenz der Daten:** «Freie Nutzung. Quellenangabe ist Pflicht.» (opendata.swiss, MeteoSchweiz Open Data)
 - **D3.js v7** für die Visualisierungen: https://d3js.org/
 - **Schriften** (Google Fonts): Schibsted Grotesk, Instrument Serif, JetBrains Mono – https://fonts.google.com/
 - **PHP-Handbuch, PDO:** https://www.php.net/manual/de/book.pdo.php
@@ -78,17 +105,19 @@ alle Details – mit drei Alpenflüssen als Vergleichsgruppe.
 
 ### Desktop
 
-![Einstieg mit Hypothese und Temperatur-Streifen in der Desktop-Ansicht](docs/screenshots/desktop.png)
+![Einstieg mit Titel, These und der Thur als Fluss, gefärbt nach Wassertemperatur 2022 und 2026](docs/screenshots/desktop.png)
 
-![Jahresvergleich 2022 und 2026 pro Fluss mit eingefärbter Differenz in der Desktop-Ansicht](docs/screenshots/desktop-grafik.png)
+![Schätzspiel: Regen 2022 im Messbecher, den Becher für 2026 füllt man selbst, die Grafik bleibt bis zum Auflösen verschwommen](docs/screenshots/desktop-schaetzen.png)
+
+![Datenseite: Regen seit 1. Januar und Pegel für alle sechs Flüsse, 2022 und 2026 übereinander](docs/screenshots/desktop-grafik.png)
 
 ### Mobile
 
 <p>
-  <img src="docs/screenshots/mobile.png" alt="Einstieg mit Hypothese und Temperatur-Streifen in der Mobile-Ansicht" width="300">
-  <img src="docs/screenshots/mobile-grafik.png" alt="Urteil zur Hypothese in der Mobile-Ansicht" width="300">
+  <img src="docs/screenshots/mobile.png" alt="Einstieg mit Titel, These und der Thur als Fluss in der Mobile-Ansicht" width="300">
+  <img src="docs/screenshots/mobile-grafik.png" alt="Schätzspiel mit Messbechern in der Mobile-Ansicht" width="300">
 </p>
 
 ## Foto des Marktstands
 
-Folgt.
+![Marktstand: das gemalte Plakat mit Fluss, Fischen und den ETL-Schritten, daneben der Laptop mit der Website](docs/marktstand.jpg)
