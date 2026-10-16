@@ -32,7 +32,7 @@
  *    2) Start: was beim Öffnen der Seite passiert
  *    3) 2022 und 2026 vergleichen, «Schätz mal!»
  *    4) Die Grafik ganz oben (zwei Flüsse)
- *    5) Die vier grossen Zahlen
+ *    5) Die drei grossen Zahlen
  *    6) Die sechs Messstellen
  *    7) Jahr gegen Jahr: eine Grafik pro Fluss
  *    7b) Regen und Pegel
@@ -158,7 +158,7 @@ function setSlot(name, content) {
 }
 
 /**
- * Kleine Symbole: Thermometer, Sonne, Welle, Stift, Regentropfen.
+ * Kleine Symbole: Thermometer, Sonne, Welle, Stift.
  * Jedes ist mit ein paar Linien gezeichnet, als Text im Code (keine Bilddateien).
  * Die Farbe bestimmt das CSS.
  */
@@ -168,7 +168,6 @@ const ICONS = {
     'M2 12h2.2', 'M19.8 12H22', 'M4.9 19.1l1.6-1.6', 'M17.5 6.5l1.6-1.6'],
   waveDown: ['M2 7.5c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0', 'M12 11v9', 'M8.5 16.5 12 20l3.5-3.5'],
   pen: ['M4 20l1.2-4.4L16.4 4.4a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.4 18.8Z', 'M14.5 6.5l3 3'],
-  drop: ['M12 3c-3.2 4.2-6 7.6-6 11a6 6 0 0 0 12 0c0-3.4-2.8-6.8-6-11Z', 'M9.2 14.5a2.8 2.8 0 0 0 2.3 2.6'],
 };
 
 /** Ein Symbol als eigenes kleines Bild für den Text */
@@ -291,6 +290,7 @@ const state = {
   cmp: null,             // der fertige Vergleich 2022 gegen 2026
   compare: { parameter: 'WT', smooth: 7 }, // «Jahr gegen Jahr»: Temperatur, 7-Tage-Mittel
   rain: { no: HERO_STATION }, // «Regen und Pegel» auf der Story-Seite: welcher Fluss
+  rainGuess: { no: null, value: null, revealed: false }, // die eigene Regen-Schätzung für 2026
   focus: { hover: null, pinned: null }, // welcher Fluss gerade hervorgehoben ist
   zoom: { no: null, kind: 'cmp' }, // welcher Fluss gross angezeigt wird, und welche Grafik ('cmp' oder 'rain')
   ts: { parameter: 'WT', days: '365', hidden: new Set(), records: null, range: null, request: 0 }, // «Selbst nachschauen»
@@ -775,13 +775,14 @@ function renderHeroFacts(s) {
       ` über 20\u00a0°C warm, ${YEARS.ref} an ${fmt0(ref)}.`));
 }
 
-/* ---------- 5) Die vier grossen Zahlen ----------------------------- */
+/* ---------- 5) Die drei grossen Zahlen ----------------------------- */
 
 /**
- * Vier Karten mit je einer grossen Zahl: heisse Tage, wärmer, tiefer, Regen.
- * Für die ersten drei nehmen wir den Mittellandfluss mit dem deutlichsten
- * Unterschied, und zwar drei verschiedene Flüsse. Die vierte zeigt den
- * Regen im ganzen Mittelland.
+ * Drei Karten mit je einer grossen Zahl: heisse Tage, wärmer, tiefer.
+ * Für jede Karte nehmen wir den Mittellandfluss mit dem deutlichsten
+ * Unterschied, und zwar drei verschiedene Flüsse.
+ * Den Regen gibt es hier absichtlich nicht: Den schätzt man erst in
+ * Abschnitt 3, und die Zahl hier würde die Lösung verraten.
  */
 function renderStats() {
   const box = document.getElementById('stats');
@@ -820,48 +821,8 @@ function renderStats() {
     tile(lowest, 'waveDown', fmtSigned(delta(lowest, 'w_mean')), 'cm',
       `tieferer Wasserstand als ${YEARS.ref}, im Mittel`,
       `${fmtCm(lowest.ref.summary.w_mean)} → ${fmtCm(lowest.cur.summary.w_mean)} ggü. mittlerem Pegel`),
-    rainTile(ml),
   );
   applyFocus();
-}
-
-/**
- * Die vierte Karte: Wie viel mehr oder weniger Regen fiel im Mittelland?
- * Wir nehmen den Durchschnitt der drei Wetterstationen von Limmat, Thur und Rhein.
- * Gibt es noch keine Regendaten, fällt die Karte einfach weg.
- *
- * Fährt man mit der Maus darüber (oder tippt auf dem Handy darauf), klappt
- * unten eine kleine Liste auf: der Regen für jeden der drei Flüsse einzeln.
- * Fährt man über einen Fluss in der Liste, wird er auf der ganzen Seite
- * hervorgehoben, wie bei den anderen Karten.
- */
-function rainTile(stations) {
-  const change = rainChange(stations);
-  if (change == null) return null;
-  const refMean = d3.mean(stations, (s) => s.ref.summary.rain_sum);
-  const curMean = d3.mean(stations, (s) => s.cur.summary.rain_sum);
-
-  // Eine Zeile pro Fluss: Farbpunkt, Name, Regen 2022 → 2026, Unterschied in Prozent.
-  const rows = stations.map((s) => {
-    const own = rainChange([s]);
-    return el('li', { class: 'stat__row focusable', 'data-station': s.no, 'data-pin': '' },
-      keySwatch(s.no),
-      el('span', { class: 'stat__row-name' }, state.names.get(s.no).river_name,
-        el('small', {}, `${fmt0(s.ref.summary.rain_sum)} → ${fmtMm(s.cur.summary.rain_sum)}`)),
-      el('strong', {}, own == null ? '–' : `${fmtSigned(roundShown(own))}\u00a0%`));
-  });
-
-  return el('article', { class: 'stat stat--rain', tabindex: '0',
-    'aria-label': `Regen im Mittelland ${fmtSigned(roundShown(change))} Prozent. Für die einzelnen Flüsse auswählen.` },
-    icon('drop', 'icon stat__icon'),
-    el('div', { class: 'stat__river' }, 'Mittelland · Regen', el('span', { class: 'stat__hint' }, '3 Flüsse')),
-    el('span', { class: 'stat__value' }, fmtSigned(roundShown(change)), el('small', {}, '%')),
-    el('p', { class: 'stat__label' }, `${change < 0 ? 'weniger' : 'mehr'} Regen als ${YEARS.ref}, zusammengezählt`),
-    el('p', { class: 'stat__ref' }, `${fmtMm(refMean)} → ${fmtMm(curMean)}, Schnitt von 3 Wetterstationen`),
-    el('div', { class: 'stat__more' },
-      el('p', { class: 'stat__more-title' }, el('strong', {}, `${fmtSigned(roundShown(change))}\u00a0%`),
-        ` im Mittelland. So sieht es pro Fluss aus (Regen 1. Januar bis ${cutoffLabel()}, ${YEARS.ref} → ${YEARS.cur}):`),
-      el('ul', {}, rows)));
 }
 
 /* ---------- 6) Die sechs Messstellen ------------------------------- */
@@ -1457,11 +1418,23 @@ function setupRain() {
   box.replaceChildren(...ml.map((s) => el('button', {
     type: 'button', role: 'radio', 'aria-checked': String(s.no === state.rain.no), 'data-no': s.no,
   }, state.names.get(s.no).river_name)));
-  setupSegmented('rain-river-switch', 'no', (no) => { state.rain.no = no; renderRain(); });
+  setupSegmented('rain-river-switch', 'no', (no) => {
+    state.rain.no = no;
+    // Vor dem Auflösen gilt die Schätzung für den neuen Fluss: neu anfangen.
+    if (!state.rainGuess.revealed) state.rainGuess = { no: null, value: null, revealed: false };
+    renderRain();
+  });
   renderRain();
 }
 
-/** Titel, Einleitung, Messbecher und Grafik für den gewählten Fluss */
+/**
+ * Titel, Einleitung, Messbecher und Grafik für den gewählten Fluss.
+ *
+ * Zuerst wird geschätzt: Man sieht nur den Regen von 2022 und füllt den
+ * Becher von 2026 selbst. Titel und Einleitung verraten das Ergebnis
+ * noch nicht, und die Grafik ist verschwommen. Erst nach «Auflösen»
+ * erscheint alles (siehe revealRainGuess).
+ */
 function renderRain() {
   const chart = document.getElementById('rain-chart');
   if (!chart || !state.cmp) return;
@@ -1471,48 +1444,176 @@ function renderRain() {
     document.getElementById('rain-gauges').replaceChildren(el('p', { class: 'muted' }, 'Für den Regen sind noch keine Daten gespeichert.'));
     return;
   }
+  const names = state.names.get(s.no);
+  const guess = state.rainGuess;
 
-  // Der Titel hängt vom Ergebnis ab: weniger Regen, mehr Regen oder etwa gleich viel.
-  // So stimmt die Überschrift auch dann, wenn sich die Daten ändern.
-  const change = rainChange(ml);
-  const shown = roundShown(change);
-  setSlot('rain-title', change <= -10 ? 'Der Regen fehlte' : change >= 10 ? 'Am Regen lag es nicht' : 'Etwa gleich viel Regen');
-  setSlot('rain-lead', [
-    `Vom 1. Januar bis ${cutoffLabel()} fiel im Gebiet von Limmat, Thur und Rhein ${YEARS.cur} `,
-    el('strong', {}, shown === 0 ? 'gleich viel Regen' : `${fmt0(Math.abs(shown))} % ${shown < 0 ? 'weniger' : 'mehr'} Regen`),
-    ` als im Hitzesommer-Jahr ${YEARS.ref}. Weniger Regen heisst weniger Wasser für die Flüsse. `,
-    'Ganz aufgehen muss die Rechnung aber nicht: Auch Seen, Schneeschmelze und Verdunstung reden mit.',
-  ]);
+  if (!guess.revealed) {
+    // Noch nicht aufgelöst: Frage statt Ergebnis.
+    setSlot('rain-title', `Wie viel Regen fiel ${YEARS.cur}?`);
+    setSlot('rain-lead', [
+      `Im Hitzesommer-Jahr ${YEARS.ref} fielen in ${names.rain_station ?? 'der Region'} vom 1. Januar bis ${cutoffLabel()} `,
+      el('strong', {}, fmtMm(s.ref.summary.rain_sum)), ` Regen, im Gebiet der ${names.river_name}. Und ${YEARS.cur}? `,
+      'Zieh den rechten Messbecher auf deine Schätzung.',
+    ]);
+  } else {
+    // Aufgelöst: Der Titel hängt vom Ergebnis ab, damit er auch dann stimmt,
+    // wenn sich die Daten ändern.
+    const change = rainChange(ml);
+    const shown = roundShown(change);
+    setSlot('rain-title', change <= -10 ? 'Der Regen fehlte' : change >= 10 ? 'Am Regen lag es nicht' : 'Etwa gleich viel Regen');
+    setSlot('rain-lead', [
+      `Vom 1. Januar bis ${cutoffLabel()} fiel im Gebiet von Limmat, Thur und Rhein ${YEARS.cur} `,
+      el('strong', {}, shown === 0 ? 'gleich viel Regen' : `${fmt0(Math.abs(shown))} % ${shown < 0 ? 'weniger' : 'mehr'} Regen`),
+      ` als im Hitzesommer-Jahr ${YEARS.ref}. Weniger Regen heisst weniger Wasser für die Flüsse. `,
+      'Ganz aufgehen muss die Rechnung aber nicht: Auch Seen, Schneeschmelze und Verdunstung reden mit.',
+    ]);
+  }
 
+  // Die Grafik bleibt verschwommen, bis aufgelöst ist.
+  document.querySelector('.rain__main').classList.toggle('is-locked', !guess.revealed);
   renderGauges(s);
   drawRainChart();
 }
 
 /**
+ * Wie hoch ist ein ganzer Becher? Etwas mehr als der Regen von 2022, damit
+ * man beim Schätzen auch «mehr als 2022» wählen kann. Nur wenn 2026 noch
+ * viel mehr Regen fiel, wird der Becher grösser.
+ */
+const gaugeMax = (s) => Math.max(s.ref.summary.rain_sum * 1.6, s.cur.summary.rain_sum * 1.05) || 1;
+
+/**
  * Die zwei Messbecher: Wie viel Regen ist bis zum Stichtag gefallen?
- * Der vollere Becher ist ganz gefüllt, der andere im richtigen Verhältnis.
+ * Vor dem Auflösen ist der Becher von 2026 leer und lässt sich mit der
+ * Maus, dem Finger oder den Pfeiltasten füllen.
  */
 function renderGauges(s) {
   const box = document.getElementById('rain-gauges');
   const names = state.names.get(s.no);
+  const guess = state.rainGuess;
   const ref = s.ref.summary.rain_sum;
   const cur = s.cur.summary.rain_sum;
-  const max = Math.max(ref, cur) || 1;
-  const change = ref > 0 ? roundShown(((cur - ref) / ref) * 100) : null;
+  const max = gaugeMax(s);
+  const pct = (v) => `${Math.min(100, (v / max) * 100)}%`;
 
-  const gauge = (year, sum) => el('div', { class: `gauge ${year === YEARS.cur ? 'gauge--cur' : 'gauge--ref'}` },
-    el('span', { class: 'gauge__value' }, fmt0(sum), el('small', {}, 'mm')),
-    el('span', { class: 'gauge__tube', 'aria-hidden': 'true' },
-      el('span', { class: 'gauge__fill', style: `--fill:${(sum / max) * 100}%` })),
+  // Ein Becher: Zahl oben, Glas in der Mitte, Jahr unten.
+  const gauge = (year, value, extra = {}) => el('div', { class: `gauge ${year === YEARS.cur ? 'gauge--cur' : 'gauge--ref'}` },
+    el('span', { class: 'gauge__value' }, value == null ? '?' : fmt0(value), value == null ? null : el('small', {}, 'mm')),
+    el('span', { class: 'gauge__tube', 'aria-hidden': 'true', ...extra.tube },
+      el('span', { class: 'gauge__fill', style: `--fill:${value == null ? '0%' : pct(value)}` }),
+      extra.marker ?? null),
     el('span', { class: 'gauge__year' }, String(year)));
 
-  box.replaceChildren(
-    el('p', { class: 'gauges__title' }, `Regen in ${names.rain_station ?? 'der Region'}`, el('small', {}, `1. Januar bis ${cutoffLabel()}`)),
-    el('div', { class: 'gauges__row' }, gauge(YEARS.ref, ref), gauge(YEARS.cur, cur)),
-    change != null ? el('p', { class: 'gauges__delta' }, el('strong', {}, `${fmtSigned(change)} %`), ` ${YEARS.cur} gegenüber ${YEARS.ref}`) : null);
+  const title = el('p', { class: 'gauges__title' }, `Regen in ${names.rain_station ?? 'der Region'}`, el('small', {}, `1. Januar bis ${cutoffLabel()}`));
+
+  if (!guess.revealed) {
+    // Schätzen: Der Becher von 2026 ist ein Schieberegler.
+    const curGauge = gauge(YEARS.cur, guess.value, {
+      tube: { 'aria-hidden': 'false', role: 'slider', tabindex: '0', class: 'gauge__tube gauge__tube--input',
+        'aria-label': `Deine Schätzung für ${YEARS.cur} in Millimetern`,
+        'aria-valuemin': '0', 'aria-valuemax': String(Math.round(max)), 'aria-valuenow': String(guess.value ?? 0) },
+    });
+    curGauge.classList.add('is-guess');
+    const reveal = el('button', { type: 'button', class: 'btn btn--primary' }, 'Auflösen');
+    reveal.disabled = guess.value == null;
+    reveal.addEventListener('click', () => revealRainGuess(s));
+    const skip = el('button', { type: 'button', class: 'tip__skip' }, 'Direkt zur Lösung');
+    skip.addEventListener('click', () => revealRainGuess(s));
+
+    box.replaceChildren(title,
+      el('div', { class: 'gauges__row' }, gauge(YEARS.ref, ref), curGauge),
+      el('p', { class: 'gauges__hint' }, guess.value == null ? '↑ Becher von unten nach oben ziehen' : 'Passt? Dann auflösen.'),
+      el('div', { class: 'gauges__actions' }, reveal, skip));
+    setupGuessInput(curGauge, s, max);
+  } else {
+    // Aufgelöst: echter Wert, dazu ein Strich bei der eigenen Schätzung.
+    const mine = guess.no === s.no && guess.value != null;
+    const marker = mine ? el('span', { class: 'gauge__marker', style: `--at:${pct(guess.value)}` }, el('small', {}, 'Dein Tipp')) : null;
+    const change = ref > 0 ? roundShown(((cur - ref) / ref) * 100) : null;
+    box.replaceChildren(title,
+      el('div', { class: 'gauges__row' }, gauge(YEARS.ref, ref), gauge(YEARS.cur, cur, { marker })),
+      change != null ? el('p', { class: 'gauges__delta' }, el('strong', {}, `${fmtSigned(change)} %`), ` ${YEARS.cur} gegenüber ${YEARS.ref}`) : null,
+      mine ? el('p', { class: 'gauges__result', 'aria-live': 'polite' }, guessFeedback(guess.value, cur)) : null);
+  }
+
+  // Gerade aufgelöst: Der Becher startet bei der eigenen Schätzung und
+  // steigt oder sinkt dann auf den echten Wert.
+  if (guess.revealed && guess.animate) {
+    state.rainGuess.animate = false;
+    const fill = box.querySelector('.gauge--cur .gauge__fill');
+    if (guess.value != null && guess.no === s.no) {
+      fill.style.setProperty('--fill', pct(guess.value));
+      requestAnimationFrame(() => requestAnimationFrame(() => fill.style.setProperty('--fill', pct(cur))));
+    }
+  }
 
   // Die Becher füllen sich langsam, sobald man hinscrollt (das CSS macht die Bewegung).
   revealOnScroll(box);
+}
+
+/**
+ * Den Becher von 2026 bedienbar machen:
+ * - Maus oder Finger: drücken und nach oben oder unten ziehen.
+ * - Tastatur: Pfeil hoch/runter (10 mm), Bild hoch/runter (50 mm).
+ * Die Schätzung wird auf 10 mm gerundet.
+ */
+function setupGuessInput(gaugeNode, s, max) {
+  const tube = gaugeNode.querySelector('.gauge__tube');
+  const fill = gaugeNode.querySelector('.gauge__fill');
+  const label = gaugeNode.querySelector('.gauge__value');
+  const box = document.getElementById('rain-gauges');
+
+  const set = (value) => {
+    const v = Math.max(0, Math.min(max, Math.round(value / 10) * 10));
+    const first = state.rainGuess.value == null;
+    state.rainGuess = { ...state.rainGuess, no: s.no, value: v };
+    fill.style.setProperty('--fill', `${(v / max) * 100}%`);
+    label.replaceChildren(fmt0(v), el('small', {}, 'mm'));
+    tube.setAttribute('aria-valuenow', String(v));
+    tube.setAttribute('aria-valuetext', fmtMm(v));
+    // Nach der ersten Schätzung: «Auflösen» freigeben und den Hinweis ändern.
+    if (first) {
+      box.querySelector('.btn--primary').disabled = false;
+      box.querySelector('.gauges__hint').textContent = 'Passt? Dann auflösen.';
+    }
+  };
+  // Wo im Glas ist die Maus? Unten = 0 mm, oben = voll.
+  const fromPointer = (event) => {
+    const r = tube.getBoundingClientRect();
+    set(((r.bottom - event.clientY) / r.height) * max);
+  };
+
+  tube.addEventListener('pointerdown', (event) => {
+    tube.setPointerCapture(event.pointerId);
+    box.classList.add('is-dragging'); // während des Ziehens ohne Verzögerung füllen
+    fromPointer(event);
+  });
+  tube.addEventListener('pointermove', (event) => { if (tube.hasPointerCapture(event.pointerId)) fromPointer(event); });
+  tube.addEventListener('pointerup', () => box.classList.remove('is-dragging'));
+  tube.addEventListener('pointercancel', () => box.classList.remove('is-dragging'));
+  tube.addEventListener('keydown', (event) => {
+    const step = { ArrowUp: 10, ArrowRight: 10, ArrowDown: -10, ArrowLeft: -10, PageUp: 50, PageDown: -50 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    set((state.rainGuess.value ?? 0) + step);
+  });
+}
+
+/** Auflösen: Ergebnis zeigen, Titel und Grafik freigeben */
+function revealRainGuess(s) {
+  state.rainGuess = { ...state.rainGuess, revealed: true, animate: true };
+  if (state.rainGuess.value == null) state.rainGuess.no = null; // ohne Schätzung kein «Dein Tipp»
+  document.getElementById('rain-gauges').classList.add('is-visible');
+  renderRain();
+}
+
+/** Wie gut war die Schätzung? Ein Satz mit Lob und den echten Zahlen. */
+function guessFeedback(value, actual) {
+  const off = Math.abs(value - actual);
+  const rel = actual > 0 ? off / actual : 1;
+  const word = rel < 0.1 ? 'Volltreffer!' : rel < 0.25 ? 'Gar nicht schlecht.' : 'Daneben – das hat dich überrascht.';
+  return [`${word} Du hast `, el('strong', {}, fmtMm(value)), ' geschätzt, es waren ',
+    el('strong', {}, fmtMm(actual)), `. Das sind ${fmtMm(off)} ${value > actual ? 'zu viel' : value < actual ? 'zu wenig' : 'Unterschied'}.`];
 }
 
 /**

@@ -210,29 +210,8 @@ em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spa
 
 /* ---------- 5) Inhalte der Abschnitte ---------------------------- */
 
-/* Die vier grossen Zahlen, als Karten in zwei Reihen */
-.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.stat--rain .stat__icon { color: var(--rain); }
-/* Die Regen-Karte: Beim Darüberfahren (oder Antippen) klappt unten die Liste der drei Flüsse auf */
-.stat--rain { position: relative; overflow: hidden; cursor: default; }
-.stat__hint { margin-left: auto; font-size: .78rem; color: var(--ink-3); border: 1px solid var(--rule-2); border-radius: 999px; padding: 1px 9px; }
-.stat__more {
-  position: absolute; inset: 0; padding: 20px 22px;
-  display: flex; flex-direction: column; justify-content: center;
-  background: var(--card);
-  opacity: 0; transform: translateY(12px); pointer-events: none; transition: opacity .2s, transform .2s;
-}
-.stat--rain:hover .stat__more, .stat--rain:focus-within .stat__more { opacity: 1; transform: none; pointer-events: auto; }
-.stat--rain:hover .stat__hint, .stat--rain:focus-within .stat__hint { color: var(--ink); border-color: var(--ink-2); }
-.stat__more-title { font-size: .86rem; color: var(--ink-2); margin: 0 0 10px; line-height: 1.4; }
-.stat__more-title strong { display: block; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; color: var(--ink); line-height: 1.1; }
-.stat__more ul { list-style: none; margin: 0; padding: 0; }
-.stat__row { display: grid; grid-template-columns: 10px 1fr auto; align-items: baseline; gap: 10px; padding: 6px 0; border-top: 1px solid var(--rule); }
-.stat__row:first-child { border-top: 0; }
-.stat__row .key { width: 8px; height: 8px; transform: translateY(-1px); }
-.stat__row-name { font-weight: 600; }
-.stat__row-name small { display: block; font-weight: 400; font-family: var(--mono); font-size: .72rem; color: var(--ink-3); }
-.stat__row strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+/* Die drei grossen Zahlen, als Karten nebeneinander */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .stat { padding: 20px 22px 22px; background: var(--card); border-radius: var(--radius); }
 .stat__river {
   display: flex; align-items: center; gap: 8px; margin-bottom: 18px;
@@ -528,6 +507,36 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 .gauges__delta { margin: 16px 0 0; font-size: .9rem; color: var(--ink-2); }
 .gauges__delta strong { color: var(--ink); font-size: 1.1rem; }
 
+/* Schätzen: Der Becher von 2026 lässt sich ziehen */
+.gauge__tube--input { cursor: ns-resize; touch-action: none; border-style: dashed; border-color: var(--signal); }
+.gauge__tube--input:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; }
+.gauge.is-guess .gauge__value { color: var(--signal); }
+.gauge.is-guess .gauge__fill { background: linear-gradient(to top, #c0461f, var(--signal)); opacity: .8; }
+.gauges.is-dragging .gauge__fill { transition: none; }
+.gauges__hint { margin: 14px 0 0; font-size: .88rem; color: var(--signal); font-weight: 600; }
+.gauges__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 12px; }
+.gauges__actions .tip__skip { margin: 0; }
+.gauges__result { margin: 12px 0 0; font-size: .92rem; line-height: 1.4; color: var(--ink-2); }
+.gauges__result strong { color: var(--ink); }
+/* Der Strich «Dein Tipp» im Becher */
+.gauge__marker { position: absolute; left: -2px; right: -2px; bottom: var(--at); border-top: 2px dashed var(--signal); }
+.gauge__marker small { position: absolute; right: 2px; bottom: 2px; font-size: .62rem; font-weight: 700; color: var(--signal); white-space: nowrap; }
+.gauge__tube { overflow: visible; }
+.gauge__fill { border-radius: 0 0 14px 14px; }
+
+/* Vor dem Auflösen: Grafik verschwommen, mit Hinweis darüber */
+.rain__main { position: relative; }
+/* Nur das Scharfwerden ist animiert. Verschwommen ist die Grafik sofort,
+   damit man das Ergebnis nicht schon beim Laden der Seite sieht. */
+.rain__main:not(.is-locked) .chart { transition: filter .6s, opacity .6s; }
+.rain__main.is-locked .chart { filter: blur(16px) grayscale(1); opacity: .3; pointer-events: none; }
+.rain__lock {
+  position: absolute; inset: 0; margin: 0; display: grid; place-items: center; text-align: center;
+  font-family: var(--serif); font-size: clamp(1.2rem, 2vw, 1.6rem); line-height: 1.25; color: var(--ink);
+  opacity: 0; pointer-events: none; transition: opacity .3s;
+}
+.rain__main.is-locked .rain__lock { opacity: 1; }
+
 /* Die Grafik: zwei Teile übereinander, jeder mit einer kleinen Überschrift */
 .panel-label { fill: var(--ink-2); font-family: var(--sans); font-size: 12px; font-weight: 600; }
 
@@ -592,7 +601,7 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 
 @media (prefers-reduced-motion: reduce) {
   .stripes__svg { clip-path: none; transition: none; }
-  .gauge__fill, .stat__more { transition: none; }
+  .gauge__fill { transition: none; }
   .chart, .tooltip, .station, [data-station] { transition: none; }
 }
 

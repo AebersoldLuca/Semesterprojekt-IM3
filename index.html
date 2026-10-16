@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&amp;display=swap">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=23">
 </head>
 <body data-page="story">
 
@@ -85,7 +85,7 @@
 
 <!-- =============================================================
      DIE ZAHLEN
-     Vier grosse Zahlen. Sie werden aus den Daten berechnet.
+     Drei grosse Zahlen. Sie werden aus den Daten berechnet.
      ============================================================= -->
 <section class="section" id="zahlen" aria-labelledby="zahlen-title">
   <p class="section__label"><span>02</span>Die Zahlen</p>
@@ -106,9 +106,9 @@
 
 <!-- =============================================================
      REGEN UND PEGEL
-     Warum stehen die Flüsse tief? Links zwei Messbecher mit dem Regen
-     beider Jahre, rechts oben der Regen seit 1. Januar (beide Jahre),
-     darunter der Pegel (beide Jahre).
+     Warum stehen die Flüsse tief? Zuerst schätzt man mit dem Messbecher,
+     wie viel es 2026 geregnet hat. Nach dem Auflösen zeigt die Grafik
+     rechts den Regen seit 1. Januar und den Pegel, 2022 und 2026.
      ============================================================= -->
 <section class="section section--wide" id="regen" aria-labelledby="regen-title">
   <p class="section__label"><span>03</span>Regen</p>
@@ -128,6 +128,8 @@
       <div class="rain__main">
         <div class="chart chart--rain" id="rain-chart" tabindex="0"
              aria-label="Regen seit 1. Januar und Pegel des Flusses, 2022 und 2026. Pfeiltasten wechseln den Tag."></div>
+        <!-- Solange noch nicht aufgelöst ist, liegt dieser Hinweis über der verschwommenen Grafik -->
+        <p class="rain__lock" aria-hidden="true">Erst schätzen, dann zeigt die Grafik,<br>wie es wirklich war.</p>
       </div>
     </div>
     <p class="note" id="rain-note"></p>
@@ -198,6 +200,6 @@
 <!-- D3.js: eine fertige Programmbibliothek zum Zeichnen von Datengrafiken.
      Nur das Werkzeug kommt von aussen, alle Daten kommen aus unserer eigenen Datenbank. -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
-<script src="script.js?v=20" defer></script>
+<script src="script.js?v=23" defer></script>
 </body>
 </html>
