@@ -542,17 +542,36 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 
 /* Am Ende der Story: der Weg zu allen Daten */
 .more {
+  position: relative; isolation: isolate; overflow: hidden;
   display: grid; gap: 14px; text-decoration: none; color: var(--ink);
-  background: var(--card); border-radius: var(--radius); padding: clamp(22px, 4vw, 44px);
-  border: 1px solid transparent; transition: border-color .2s;
+  background-color: var(--card); border-radius: var(--radius); padding: clamp(22px, 4vw, 44px);
+  transition: transform .4s cubic-bezier(.2, .7, .2, 1), background-color .4s, box-shadow .4s;
 }
-.more:hover { border-color: var(--signal); }
+/* Ein weicher, oranger Lichtschein. Er folgt der Maus (--mx und --my setzt script.js). */
+.more::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(480px circle at var(--mx, 75%) var(--my, 20%), rgba(255, 77, 28, .16), transparent 65%);
+  opacity: 0; transition: opacity .4s;
+}
+/* Beim Darüberfahren: Die Karte hebt sich leicht und der Lichtschein erscheint */
+.more:hover, .more:focus-visible { transform: translateY(-4px); background-color: #101a24; box-shadow: 0 28px 60px -28px rgba(0, 0, 0, .8); }
+.more:hover::before, .more:focus-visible::before { opacity: 1; }
 .more__kicker { font-size: .9rem; color: var(--signal); font-weight: 600; }
 .more__title { font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 700; letter-spacing: -0.045em; line-height: .95; }
 .more__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; color: var(--ink-2); max-width: 44rem; }
-.more__list span::before { content: "→ "; color: var(--ink-3); }
-.more__btn { justify-self: start; display: inline-flex; align-items: center; margin-top: 8px; }
-.more:hover .more__btn { border-color: var(--ink); }
+.more__list span { transition: color .3s; }
+.more__list span::before { content: "→ "; color: var(--ink-3); transition: color .3s; }
+/* Die Pfeile der Liste werden nacheinander orange */
+.more:hover .more__list span, .more:focus-visible .more__list span { color: var(--ink); }
+.more:hover .more__list span::before, .more:focus-visible .more__list span::before { color: var(--signal); }
+.more__list span:nth-child(2), .more__list span:nth-child(2)::before { transition-delay: .06s; }
+.more__list span:nth-child(3), .more__list span:nth-child(3)::before { transition-delay: .12s; }
+.more__list span:nth-child(4), .more__list span:nth-child(4)::before { transition-delay: .18s; }
+.more__btn { justify-self: start; display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* Der Pfeil im Knopf gleitet nach rechts */
+.more__arrow { display: inline-block; transition: transform .35s cubic-bezier(.2, .7, .2, 1); }
+.more:hover .more__arrow, .more:focus-visible .more__arrow { transform: translateX(6px); }
+.more:hover .more__btn, .more:focus-visible .more__btn { background-color: #ff6a3d; border-color: #ff6a3d; }
 
 /* Einen Fluss hervorheben: alle anderen werden blass */
 [data-station] { transition: opacity .25s ease, background-color .2s; }
@@ -602,6 +621,8 @@ td .key, th .key { display: inline-block; width: 8px; height: 8px; vertical-alig
 @media (prefers-reduced-motion: reduce) {
   .stripes__svg { clip-path: none; transition: none; }
   .gauge__fill { transition: none; }
+  .more, .more:hover, .more:focus-visible { transform: none; }
+  .more__arrow, .more:hover .more__arrow { transform: none; }
   .chart, .tooltip, .station, [data-station] { transition: none; }
 }
 

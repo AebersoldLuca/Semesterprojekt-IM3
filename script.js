@@ -357,6 +357,7 @@ async function init() {
     setupRain();
     renderVerdict();
     setupTip();
+    setupMoreGlow();
   } else {
     renderStationGroups();
     renderMultiples();
@@ -1836,6 +1837,23 @@ function setupTip() {
     }
     body.focus();
   }));
+}
+
+/* ----- Die Karte «Alle Daten ansehen» am Ende der Story ----- */
+
+/**
+ * Fährt man mit der Maus über die Karte, folgt ihr ein weicher Lichtschein.
+ * Hier merken wir uns nur, wo die Maus gerade ist (in Prozent der Karte).
+ * Das Zeichnen des Scheins übernimmt das CSS (.more::before).
+ */
+function setupMoreGlow() {
+  const card = document.querySelector('.more');
+  if (!card) return;
+  card.addEventListener('pointermove', (event) => {
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', `${((event.clientX - r.left) / r.width) * 100}%`);
+    card.style.setProperty('--my', `${((event.clientY - r.top) / r.height) * 100}%`);
+  });
 }
 
 /* ----- Einen Fluss auf der ganzen Seite hervorheben ----- */
