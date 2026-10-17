@@ -628,6 +628,44 @@ const tooltipRow = (name, color, value) => el('div', { class: 'tooltip__row' },
   el('span', { class: 'tooltip__value' }, value));
 
 /**
+ * Der Rahmen einer Grafik, für alle Grafiken gleich: altes Bild entfernen,
+ * Grösse messen, den Rand für die Beschriftung abziehen und ein neues Bild
+ * (SVG) mit einer verschobenen Zeichenfläche g anlegen.
+ * Gibt null zurück, wenn die Grafik noch unsichtbar oder zu klein ist.
+ */
+function chartFrame(chart, margin, { minW = 50, minH = 50 } = {}) {
+  d3.select(chart).selectAll('svg').remove();
+  const width = chart.clientWidth;
+  const height = chart.clientHeight;
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+  if (innerW < minW || innerH < minH) return null;
+  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+  return { svg, g, width, height, innerW, innerH, margin };
+}
+
+/** Die Monate als Achse unten. every: jeden wievielten Monat beschriften. */
+function drawMonthAxis(g, x, innerH, every = 1) {
+  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(every)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')))
+    .call((a) => a.selectAll('.tick line').attr('y2', 3));
+}
+
+/** Die Werte als Achse links, mit feinen Hilfslinien quer durch die Grafik. */
+function drawValueAxis(g, y, innerW, ticks, format) {
+  g.append('g').attr('class', 'axis axis--y')
+    .call(d3.axisLeft(y).ticks(ticks).tickSize(-innerW).tickFormat(format))
+    .call((a) => a.selectAll('.tick text').attr('x', -6));
+}
+
+/** Eine waagrechte Hilfslinie mit Beschriftung, z.B. bei 25 °C. */
+function drawRefLine(g, y, value, innerW, label, { x = 4, anchor = 'start' } = {}) {
+  g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(value)).attr('y2', y(value));
+  g.append('text').attr('class', 'refline-label').attr('x', x).attr('y', y(value) - 6).attr('text-anchor', anchor).text(label);
+}
+
+/**
  * Der letzte Schritt jeder Grafik:
  * 1. Beschriftungen in der Grafik bekommen einen dunklen Rand, damit man sie
  *    auch über Linien gut lesen kann («paint-order»: zuerst der Rand, dann die Schrift).
@@ -702,33 +740,20 @@ function drawDiff(g, defs, { x, y, refPts, curPts, top, bottom, higher, lower })
  * - blau, wo es umgekehrt war.
  */
 function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
-  d3.select(chart).selectAll('svg').remove();
-  const width = chart.clientWidth;
-  const height = chart.clientHeight;
-  const m = large ? { top: 14, right: 44, bottom: 28, left: 46 } : { top: 10, right: 34, bottom: 24, left: 36 };
-  const innerW = width - m.left - m.right;
-  const innerH = height - m.top - m.bottom;
-  if (innerW < 50 || innerH < 50) return; // noch nicht sichtbar
+  const margin = large ? { top: 14, right: 44, bottom: 28, left: 46 } : { top: 10, right: 34, bottom: 24, left: 36 };
+  const frame = chartFrame(chart, margin);
+  if (!frame) return; // noch nicht sichtbar
+  const { svg, g, width, innerW, innerH } = frame;
 
-  const x = d3.scaleUtc().domain([new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, 11, 31))]).range([0, innerW]);
+  const x = d3.scaleUtc().domain([YEAR_START, new Date(Date.UTC(2000, 11, 31))]).range([0, innerW]);
   const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([innerH, 0]);
 
-  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
-  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
-
-  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
-    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(width < 330 ? 3 : width > 700 ? 1 : 2)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')))
-    .call((a) => a.selectAll('.tick line').attr('y2', 3));
-  g.append('g').attr('class', 'axis axis--y')
-    .call(d3.axisLeft(y).ticks(large ? 8 : 4).tickSize(-innerW).tickFormat((v) => (isW ? fmtSigned(v) : fmt0(v))))
-    .call((a) => a.selectAll('.tick text').attr('x', -6));
+  drawMonthAxis(g, x, innerH, width < 330 ? 3 : width > 700 ? 1 : 2);
+  drawValueAxis(g, y, innerW, large ? 8 : 4, (v) => (isW ? fmtSigned(v) : fmt0(v)));
   g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
 
   // Anmerkung bei der Temperatur: die 25-°C-Grenze für Äschen, falls sie in der Grafik liegt.
-  if (!isW && y.domain()[1] >= 25) {
-    g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(25)).attr('y2', y(25));
-    g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(25) - 5).text(large ? '25 °C: kritisch für Äschen' : '25 °C');
-  }
+  if (!isW && y.domain()[1] >= 25) drawRefLine(g, y, 25, innerW, large ? '25 °C: kritisch für Äschen' : '25 °C');
 
   // Die gepunktete Linie beim Stichtag: Bis hierhin wird verglichen.
   const [mm, dd] = state.cmp.cutoff.split('-').map(Number);
@@ -754,7 +779,7 @@ function drawMultiple(chart, s, { yMin, yMax, isW, f, large = false }) {
   const shown = (v) => roundShown(v, isW ? 0 : 1); // so gerundet wie angezeigt, damit die Differenz aufgeht
 
   attachCrosshair({
-    chart, g, innerW, innerH, margin: m,
+    chart, g, innerW, innerH, margin,
     dockable: false, // das Werte-Fenster schwebt über der Grafik und verschiebt nichts
     positions: days.map((d) => x(d)),
     render(i, hover) {
@@ -814,9 +839,7 @@ function drawYearLabels(g, x, y, refPts, curPts) {
  */
 function drawPanel(g, defs, { x, y, refPts, curPts, top, bottom, innerW, label, ticks, format, baseline = false }) {
   g.append('text').attr('class', 'panel-label').attr('x', 0).attr('y', top - 10).text(label);
-  g.append('g').attr('class', 'axis axis--y')
-    .call(d3.axisLeft(y).ticks(ticks).tickSize(-innerW).tickFormat(format))
-    .call((a) => a.selectAll('.tick text').attr('x', -6));
+  drawValueAxis(g, y, innerW, ticks, format);
   if (baseline) g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
   drawDiff(g, defs, { x, y, refPts, curPts, top, bottom, higher: 'diff--cool', lower: 'diff--warm' });
   const line = valueLine(x, y);
@@ -904,14 +927,11 @@ function attachRainTooltip(chart, g, s, { x, yRain, yLevel, innerW, innerH, marg
  * - compact: kleine Version für die Datenseite.
  */
 function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
-  d3.select(chart).selectAll('svg').remove();
-  const width = chart.clientWidth;
-  const height = chart.clientHeight;
-  const small = width < 560; // Handy?
+  const small = chart.clientWidth < 560; // Handy?
   const margin = { top: 20, right: compact ? 34 : 44, bottom: 24, left: compact ? 40 : 48 };
-  const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
-  if (innerW < 60 || innerH < 120) return; // noch nicht sichtbar
+  const frame = chartFrame(chart, margin, { minW: 60, minH: 120 });
+  if (!frame) return; // noch nicht sichtbar
+  const { svg, g, innerW, innerH } = frame;
 
   // Die Fläche aufteilen: oben das Regen-Konto, dann ein Abstand, darunter der Pegel.
   const gap = compact ? 34 : 42;
@@ -929,9 +949,7 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
   const yRain = d3.scaleLinear().domain([0, rainMax]).nice().range([rainH, 0]);
   const yLevel = d3.scaleLinear().domain([lvlMin, lvlMax]).nice().range([innerH, levelTop]);
 
-  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
   const defs = svg.append('defs');
-  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
   // Oben: das Regen-Konto. Unten: der Pegel.
   drawPanel(g, defs, { x, y: yRain, refPts: lines.rainRef, curPts: lines.rainCur, top: 0, bottom: rainH, innerW,
@@ -942,10 +960,7 @@ function drawRain(chart, s, { rainMax, lvlMin, lvlMax, compact = false }) {
     ticks: compact ? 3 : 5, format: (v) => fmtSigned(v), baseline: true });
   drawRainNotes(g, s, { x, yLevel, innerW, innerH, rainH, compact });
 
-  // Die Monate unten.
-  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
-    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(small || compact ? 2 : 1)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')))
-    .call((a) => a.selectAll('.tick line').attr('y2', 3));
+  drawMonthAxis(g, x, innerH, small || compact ? 2 : 1);
 
   attachRainTooltip(chart, g, s, { x, yRain, yLevel, innerW, innerH, margin, lines });
   finishChart(chart, { reveal: chart.id !== 'zoom-chart' }); // in der grossen Ansicht sofort ganz zeigen
@@ -1182,16 +1197,12 @@ function renderDraw() {
   const d = state.draw;
   if (!d) return;
   const chart = document.getElementById('draw-chart');
-  d3.select(chart).selectAll('svg').remove();
-  const width = chart.clientWidth;
-  const height = chart.clientHeight;
-  const small = width < 560; // Handy?
-  const m = { top: 16, right: small ? 14 : 24, bottom: 28, left: small ? 30 : 40 }; // Rand für die Beschriftung
-  const innerW = width - m.left - m.right;
-  const innerH = height - m.top - m.bottom;
-  if (innerW < 80 || innerH < 80) return; // noch nicht sichtbar
+  const small = chart.clientWidth < 560; // Handy?
+  const frame = chartFrame(chart, { top: 16, right: small ? 14 : 24, bottom: 28, left: small ? 30 : 40 }, { minW: 80, minH: 80 });
+  if (!frame) return;
+  const { g, innerW, innerH } = frame;
 
-  // Die Linien von 2022 und 2026 (7-Tage-Mittel) und die Achsen:
+  // Die Linien von 2022 und 2026 (7-Tage-Mittel) und die Umrechnungen:
   // x = Datum (links Januar, rechts Stichtag), y = Temperatur (unten 0 °C).
   const cutoff = d.slots[d.slots.length - 1];
   const ref = yearPoints(d.s.ref.records, YEARS.ref, 'WT', 7).filter((p) => p.x <= cutoff);
@@ -1199,32 +1210,18 @@ function renderDraw() {
   const top = d3.max([...ref, ...cur], (p) => p.value) ?? 25;
   const x = d3.scaleUtc().domain([YEAR_START, cutoff]).range([0, innerW]);
   const y = d3.scaleLinear().domain([0, Math.max(28, Math.ceil(top + 2))]).range([innerH, 0]);
-
-  const svg = d3.select(chart).append('svg').attr('width', width).attr('height', height).attr('aria-hidden', 'true');
-  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
-  // Die hellblaue Fläche, in der man zeichnen darf.
-  g.append('rect').attr('class', 'draw__zone').attr('x', x(d.start)).attr('width', innerW - x(d.start)).attr('height', innerH).attr('rx', 10);
-  g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
-    .call(d3.axisBottom(x).ticks(d3.utcMonth.every(small ? 2 : 1)).tickSizeOuter(0).tickFormat(locale.utcFormat('%b')));
-  g.append('g').attr('class', 'axis axis--y')
-    .call(d3.axisLeft(y).ticks(small ? 4 : 6).tickSize(-innerW).tickFormat((v) => `${fmt0(v)}°`))
-    .call((a) => a.selectAll('.tick text').attr('x', -6));
-
-  // Anmerkung: ab 25 °C wird es für Äschen gefährlich (siehe Text bei «Die Zahlen»).
-  g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(25)).attr('y2', y(25));
-  // Die Beschriftung steht links, wo die Kurve noch tief liegt.
-  g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(25) - 6)
-    .text(small ? '25 °C: kritisch' : '25 °C: ab hier wird es für Äschen gefährlich');
-
-  // Die graue Linie von 2022.
   const line = valueLine(x, y).curve(d3.curveBasis);
+
+  drawDrawBackground(g, d, { x, y, innerW, innerH, small });
+
+  // Die graue Linie von 2022 mit Jahreszahl.
   g.append('path').attr('class', 'draw__ref').attr('d', line(ref));
-  const refLast = [...ref].reverse().find((p) => p.value != null);
+  const refLast = lastValue(ref);
   if (refLast) g.append('text').attr('class', 'year-label year-label--ref').attr('x', x(refLast.x) - 4).attr('y', y(refLast.value) + 18).attr('text-anchor', 'end').text(YEARS.ref);
 
   // Der Januar 2026 ist schon gezeichnet, als Startpunkt.
   const known = cur.filter((p) => p.x == null || p.x < d.start);
-  const anchor = [...known].reverse().find((p) => p.value != null);
+  const anchor = lastValue(known);
   g.append('path').attr('class', 'draw__real').attr('d', line(known));
 
   // Die eigene, orange Linie und der Hinweis «Zeichne hier weiter» mit Stift.
@@ -1234,55 +1231,80 @@ function renderDraw() {
   appendIcon(hint.append('g').attr('class', 'draw__hint-icon').attr('transform', 'translate(13,-17)'), 'pen', 26);
   hint.append('text').attr('class', 'draw__hint').attr('x', 32).attr('y', -12).text(small ? 'Hier weiterzeichnen' : 'Zeichne hier weiter, wie warm es 2026 war');
 
-  // Nach jedem Strich: die eigene Linie neu zeichnen und die Knöpfe anpassen.
-  // «Auflösen» geht erst, wenn mindestens 60 % der Wochen gezeichnet sind.
-  const update = () => {
-    const pts = [anchor && { x: anchor.x, value: anchor.value }, ...d.slots.map((slot, i) => ({ x: slot, value: d.guess[i] }))].filter(Boolean);
-    guessPath.attr('d', valueLine(x, y).curve(d3.curveMonotoneX)(pts));
-    const filled = d.guess.filter((v) => v != null).length;
-    hint.style('display', filled || d.revealed ? 'none' : null);
-    document.getElementById('draw-reveal').disabled = d.revealed || filled < d.slots.length * 0.6;
-    document.getElementById('draw-reveal').hidden = d.revealed;
-    document.getElementById('draw-skip').hidden = d.revealed || filled > 0;
-    document.getElementById('draw-reset').hidden = !d.revealed && filled === 0;
-  };
-
+  const update = () => updateDrawGuess(d, { guessPath, hint, x, y, anchor });
   if (d.revealed) {
-    // Aufgelöst: Die echte Linie von 2026 zeichnet sich langsam von links nach rechts.
-    const rest = cur.filter((p) => p.x == null || p.x >= d3.utcDay.offset(d.start, -7));
-    const real = g.append('path').attr('class', 'draw__real').attr('d', line(rest));
-    const length = real.node().getTotalLength();
-    if (!reducedMotion()) {
-      real.attr('stroke-dasharray', `${length} ${length}`).attr('stroke-dashoffset', length)
-        .transition().duration(1600).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0)
-        .on('end', () => real.attr('stroke-dasharray', null));
-    }
-    const curLast = [...cur].reverse().find((p) => p.value != null);
-    if (curLast) g.append('text').attr('class', 'year-label').attr('x', x(curLast.x) - 4).attr('y', y(curLast.value) - 10).attr('text-anchor', 'end').text(YEARS.cur);
+    revealRealLine(g, d, cur, { x, y, line });
   } else {
-    // Noch nicht aufgelöst: Man zeichnet mit gedrückter Maus oder mit dem Finger.
-    // Wo die Maus ist, wird der Wert für die nächstgelegene Woche gesetzt.
-    const setAt = (event) => {
-      const [mx, my] = d3.pointer(event, g.node());
-      const i = d3.leastIndex(d.slots, (slot) => Math.abs(x(slot) - mx));
-      const value = Math.max(0, Math.min(y.domain()[1], y.invert(my)));
-      // Wer schnell zieht, überspringt Wochen. Die Lücke füllen wir mit einer geraden Linie.
-      if (d.last != null && Math.abs(i - d.last.i) > 1) {
-        const [a, b] = d.last.i < i ? [d.last, { i, value }] : [{ i, value }, d.last];
-        for (let k = a.i + 1; k < b.i; k++) d.guess[k] = a.value + ((b.value - a.value) * (k - a.i)) / (b.i - a.i);
-      }
-      d.guess[i] = value;
-      d.last = { i, value };
-      update();
-    };
-    g.append('rect').attr('x', x(d.start) - 12).attr('width', innerW - x(d.start) + 12).attr('height', innerH)
-      .attr('fill', 'transparent')
-      .on('pointerdown', (event) => { event.target.setPointerCapture(event.pointerId); d.last = null; setAt(event); })
-      .on('pointermove', (event) => { if (event.buttons || event.pointerType === 'touch') { if (d.last) setAt(event); } })
-      .on('pointerup pointercancel', () => { d.last = null; });
+    enableDrawing(g, d, { x, y, innerW, innerH, update });
   }
   update();
   finishChart(chart);
+}
+
+/** Der Hintergrund der Zeichenfläche: hellblaue Zone, Achsen und die 25-°C-Linie */
+function drawDrawBackground(g, d, { x, y, innerW, innerH, small }) {
+  // Die hellblaue Fläche, in der man zeichnen darf.
+  g.append('rect').attr('class', 'draw__zone').attr('x', x(d.start)).attr('width', innerW - x(d.start)).attr('height', innerH).attr('rx', 10);
+  drawMonthAxis(g, x, innerH, small ? 2 : 1);
+  drawValueAxis(g, y, innerW, small ? 4 : 6, (v) => `${fmt0(v)}°`);
+  // Anmerkung: ab 25 °C wird es für Äschen gefährlich (siehe Text bei «Die Zahlen»).
+  // Die Beschriftung steht links, wo die Kurve noch tief liegt.
+  drawRefLine(g, y, 25, innerW, small ? '25 °C: kritisch' : '25 °C: ab hier wird es für Äschen gefährlich');
+}
+
+/**
+ * Nach jedem Strich: die eigene Linie neu zeichnen und die Knöpfe anpassen.
+ * «Auflösen» geht erst, wenn mindestens 60 % der Wochen gezeichnet sind.
+ */
+function updateDrawGuess(d, { guessPath, hint, x, y, anchor }) {
+  const pts = [anchor && { x: anchor.x, value: anchor.value }, ...d.slots.map((slot, i) => ({ x: slot, value: d.guess[i] }))].filter(Boolean);
+  guessPath.attr('d', valueLine(x, y).curve(d3.curveMonotoneX)(pts));
+  const filled = d.guess.filter((v) => v != null).length;
+  hint.style('display', filled || d.revealed ? 'none' : null);
+  const reveal = document.getElementById('draw-reveal');
+  reveal.disabled = d.revealed || filled < d.slots.length * 0.6;
+  reveal.hidden = d.revealed;
+  document.getElementById('draw-skip').hidden = d.revealed || filled > 0;
+  document.getElementById('draw-reset').hidden = !d.revealed && filled === 0;
+}
+
+/** Aufgelöst: Die echte Linie von 2026 zeichnet sich langsam von links nach rechts. */
+function revealRealLine(g, d, cur, { x, y, line }) {
+  const rest = cur.filter((p) => p.x == null || p.x >= d3.utcDay.offset(d.start, -7));
+  const real = g.append('path').attr('class', 'draw__real').attr('d', line(rest));
+  const length = real.node().getTotalLength();
+  if (!reducedMotion()) {
+    real.attr('stroke-dasharray', `${length} ${length}`).attr('stroke-dashoffset', length)
+      .transition().duration(1600).ease(d3.easeCubicOut).attr('stroke-dashoffset', 0)
+      .on('end', () => real.attr('stroke-dasharray', null));
+  }
+  const curLast = lastValue(cur);
+  if (curLast) g.append('text').attr('class', 'year-label').attr('x', x(curLast.x) - 4).attr('y', y(curLast.value) - 10).attr('text-anchor', 'end').text(YEARS.cur);
+}
+
+/**
+ * Noch nicht aufgelöst: Man zeichnet mit gedrückter Maus oder mit dem Finger.
+ * Wo die Maus ist, wird der Wert für die nächstgelegene Woche gesetzt.
+ */
+function enableDrawing(g, d, { x, y, innerW, innerH, update }) {
+  const setAt = (event) => {
+    const [mx, my] = d3.pointer(event, g.node());
+    const i = d3.leastIndex(d.slots, (slot) => Math.abs(x(slot) - mx));
+    const value = Math.max(0, Math.min(y.domain()[1], y.invert(my)));
+    // Wer schnell zieht, überspringt Wochen. Die Lücke füllen wir mit einer geraden Linie.
+    if (d.last != null && Math.abs(i - d.last.i) > 1) {
+      const [a, b] = d.last.i < i ? [d.last, { i, value }] : [{ i, value }, d.last];
+      for (let k = a.i + 1; k < b.i; k++) d.guess[k] = a.value + ((b.value - a.value) * (k - a.i)) / (b.i - a.i);
+    }
+    d.guess[i] = value;
+    d.last = { i, value };
+    update();
+  };
+  g.append('rect').attr('x', x(d.start) - 12).attr('width', innerW - x(d.start) + 12).attr('height', innerH)
+    .attr('fill', 'transparent')
+    .on('pointerdown', (event) => { event.target.setPointerCapture(event.pointerId); d.last = null; setAt(event); })
+    .on('pointermove', (event) => { if ((event.buttons || event.pointerType === 'touch') && d.last) setAt(event); })
+    .on('pointerup pointercancel', () => { d.last = null; });
 }
 
 /**
@@ -1337,100 +1359,119 @@ function renderStripes() {
 
   // Die Beschriftung unter der Grafik.
   const names = state.names.get(s.no);
-  const cutoff = state.cmp.cutoff;
-  setSlot('ramp-min', '0 °C');
-  setSlot('ramp-max', '24 °C');
+  setSlot('ramp-min', '0 °C');
+  setSlot('ramp-max', '24 °C');
   document.getElementById('stripes-caption').textContent =
     `Wassertemperatur ${ofRiver(s.no)} in ${names.station_name} pro Tag, bis ${cutoffLabel()}.`;
 
   const width = rowsBox.clientWidth;
   if (width < 100) return; // noch nicht sichtbar
   const small = width < 560; // Handy?
-  const height = small ? 84 : 112;
-  // Hat jemand am Computer «Bewegung reduzieren» eingestellt? Dann keine Fische.
-  const reduceMotion = reducedMotion();
-  // Umrechnung: Tag im Jahr → Position von links nach rechts.
-  const x = d3.scaleLinear().domain([0, 366]).range([0, width]);
-  const tooltip = getTooltip(figure);
+  // Was beide Flüsse gemeinsam brauchen: Grösse und Umrechnung Tag im Jahr → Position.
+  const ctx = {
+    width, small, height: small ? 84 : 112,
+    x: d3.scaleLinear().domain([0, 366]).range([0, width]),
+    tooltip: getTooltip(figure), figure, riverName: names.river_name,
+  };
 
-  // Zwei Flüsse zeichnen: einen für 2022, einen für 2026.
-  const rows = [[YEARS.ref, s.ref.records, 0], [YEARS.cur, s.cur.records, Math.PI]].map(([year, records, phase]) => {
-    const days = records.filter((r) => r.water_temperature_c != null);
-    const thick = height * 0.34; // wie breit der Fluss ist
-    const mid = height * 0.62;   // wo seine Mitte liegt
-    // Der Fluss schlängelt sich in Wellen durchs Bild (eine Sinuskurve).
-    const cy = (px) => mid + height * 0.1 * Math.sin((px / width) * Math.PI * 5 + phase);
-    const end = x(d3.max(days, (r) => dayIndex(r.date.slice(5))) + 1); // 2026 endet beim letzten Messtag
-    const xs = [...d3.range(0, end, 4), end];
-    const id = `hero-${year}`;
-
-    const svg = d3.create('svg').attr('class', 'stripes__svg').attr('width', width).attr('height', height)
-      .attr('role', 'img').attr('aria-label', `Wassertemperatur ${year}, ${names.river_name}: ${days.length} Tage`);
-    // Der Farbverlauf: Für jeden Tag ein Farbpunkt, je nach Temperatur.
-    const defs = svg.append('defs');
-    defs.append('linearGradient').attr('id', `${id}-color`).attr('gradientUnits', 'userSpaceOnUse')
-      .attr('x1', 0).attr('x2', width).attr('y1', 0).attr('y2', 0)
-      .selectAll('stop').data(days).join('stop')
-      .attr('offset', (r) => (dayIndex(r.date.slice(5)) + 0.5) / 366)
-      .attr('stop-color', (r) => tempColor(r.water_temperature_c));
-
-    // Den Fluss selbst zeichnen und mit dem Farbverlauf füllen.
-    const river = d3.area().x((p) => p).y0((p) => cy(p) - thick / 2).y1((p) => cy(p) + thick / 2).curve(d3.curveBasis);
-    svg.append('path').attr('class', 'hero-river').attr('d', river(xs)).attr('fill', `url(#${id}-color)`);
-    // Glanz auf dem Wasser
-    svg.append('path').attr('class', 'hero-river__shine')
-      .attr('d', d3.line().x((p) => p).y((p) => cy(p) - thick * 0.2).curve(d3.curveBasis)(xs.filter((p) => p < end - 12)));
-
-    // Drei Fische schwimmen der Mitte des Flusses entlang, versetzt gestartet.
-    if (!reduceMotion) {
-      defs.append('path').attr('id', `${id}-path`).attr('d', d3.line().x((p) => p).y(cy).curve(d3.curveBasis)(xs));
-      const duration = small ? 16 : 26;
-      [0, 0.36, 0.71].forEach((offset, k) => {
-        svg.append('path').attr('class', 'hero-fish').attr('d', FISH_PATH).attr('transform', `scale(${k === 1 ? 0.8 : 1})`)
-          .append('animateMotion').attr('dur', `${duration}s`).attr('repeatCount', 'indefinite').attr('rotate', 'auto')
-          .attr('begin', `-${(offset * duration).toFixed(1)}s`)
-          .append('mpath').attr('href', `#${id}-path`);
-      });
-    }
-
-    // Die Sonne über dem heissesten Tag, mit der Temperatur daneben.
-    const hot = hottestDay(days.filter((r) => r.date.slice(5) <= cutoff));
-    if (hot) {
-      const hx = x(dayIndex(hot.date.slice(5)) + 0.5);
-      const right = hx > width - (small ? 150 : 190); // Kein Platz mehr rechts? Dann steht der Text links.
-      const sun = svg.append('g').attr('class', 'hero-sun')
-        .attr('transform', `translate(${hx},${Math.max(13, cy(hx) - thick / 2 - 22)})`);
-      appendIcon(sun, 'sun', 24);
-      sun.append('text').attr('x', right ? -18 : 18).attr('dy', '0.35em').attr('text-anchor', right ? 'end' : 'start')
-        .text(`Heissester Tag: ${fmtTemp(hot.water_temperature_c)}`);
-    }
-
-    // Mit der Maus darüber: Ein Punkt erscheint, dazu Datum und Temperatur.
-    const dot = svg.append('circle').attr('class', 'hero-dot').attr('r', 5).style('display', 'none');
-    const byDay = new Map(days.map((r) => [dayIndex(r.date.slice(5)), r]));
-    svg.on('pointermove', (event) => {
-      const [mx] = d3.pointer(event);
-      const r = byDay.get(Math.floor(x.invert(mx)));
-      if (!r) { tooltip.hide(); dot.style('display', 'none'); return; }
-      const px = x(dayIndex(r.date.slice(5)) + 0.5);
-      dot.style('display', null).attr('cx', px).attr('cy', cy(px));
-      const box = event.currentTarget.getBoundingClientRect();
-      const fb = figure.getBoundingClientRect();
-      tooltip.show(el('div', {},
-        el('div', { class: 'tooltip__date' }, fmtDateTooltip(parseDate(r.date))),
-        el('div', {}, `${r.river_name}: `, el('strong', {}, fmtTemp(r.water_temperature_c)))),
-      px + box.left - fb.left, box.top - fb.top + cy(px) - 40);
-    }).on('pointerleave', () => { tooltip.hide(); dot.style('display', 'none'); });
-
-    return el('div', { class: `stripes__row${year === YEARS.cur ? ' stripes__row--cur' : ''}` },
-      el('span', { class: 'stripes__year' }, String(year)), svg.node());
-  });
-  rowsBox.replaceChildren(...rows);
+  // Zwei Flüsse zeichnen: oben 2022, unten 2026 (um eine halbe Welle verschoben).
+  rowsBox.replaceChildren(
+    drawHeroRiver(YEARS.ref, s.ref.records, 0, ctx),
+    drawHeroRiver(YEARS.cur, s.cur.records, Math.PI, ctx));
   renderHeroFacts(s);
 
   // Die Flüsse von links nach rechts «einfliessen» lassen.
   requestAnimationFrame(() => requestAnimationFrame(() => figure.classList.add('is-drawn')));
   finishChart(rowsBox, { reveal: false }); // die Flüsse oben haben ihre eigene Bewegung
+}
+
+/**
+ * Ein Fluss der Grafik ganz oben, für ein Jahr. Er schlängelt sich in Wellen
+ * durchs Bild, und seine Farbe zeigt Tag für Tag die Wassertemperatur.
+ * phase verschiebt die Welle, damit die zwei Flüsse nicht gleich aussehen.
+ */
+function drawHeroRiver(year, records, phase, ctx) {
+  const { width, height, x } = ctx;
+  const days = records.filter((r) => r.water_temperature_c != null);
+  const river = {
+    thick: height * 0.34, // wie breit der Fluss ist
+    // die Mitte des Flusses an jeder Stelle: eine Sinuskurve um 62 % der Höhe
+    cy: (px) => height * 0.62 + height * 0.1 * Math.sin((px / width) * Math.PI * 5 + phase),
+    end: x(d3.max(days, (r) => dayIndex(r.date.slice(5))) + 1), // 2026 endet beim letzten Messtag
+    id: `hero-${year}`,
+  };
+  const xs = [...d3.range(0, river.end, 4), river.end];
+
+  const svg = d3.create('svg').attr('class', 'stripes__svg').attr('width', width).attr('height', height)
+    .attr('role', 'img').attr('aria-label', `Wassertemperatur ${year}, ${ctx.riverName}: ${days.length} Tage`);
+  // Der Farbverlauf: Für jeden Tag ein Farbpunkt, je nach Temperatur.
+  const defs = svg.append('defs');
+  defs.append('linearGradient').attr('id', `${river.id}-color`).attr('gradientUnits', 'userSpaceOnUse')
+    .attr('x1', 0).attr('x2', width).attr('y1', 0).attr('y2', 0)
+    .selectAll('stop').data(days).join('stop')
+    .attr('offset', (r) => (dayIndex(r.date.slice(5)) + 0.5) / 366)
+    .attr('stop-color', (r) => tempColor(r.water_temperature_c));
+
+  // Den Fluss selbst zeichnen, mit dem Farbverlauf füllen und mit Glanz auf dem Wasser.
+  const area = d3.area().x((p) => p).y0((p) => river.cy(p) - river.thick / 2).y1((p) => river.cy(p) + river.thick / 2).curve(d3.curveBasis);
+  svg.append('path').attr('class', 'hero-river').attr('d', area(xs)).attr('fill', `url(#${river.id}-color)`);
+  svg.append('path').attr('class', 'hero-river__shine')
+    .attr('d', d3.line().x((p) => p).y((p) => river.cy(p) - river.thick * 0.2).curve(d3.curveBasis)(xs.filter((p) => p < river.end - 12)));
+
+  addFish(svg, defs, xs, river, ctx);
+  addHottestSun(svg, days, river, ctx);
+  addRiverTooltip(svg, days, river, ctx);
+
+  return el('div', { class: `stripes__row${year === YEARS.cur ? ' stripes__row--cur' : ''}` },
+    el('span', { class: 'stripes__year' }, String(year)), svg.node());
+}
+
+/**
+ * Drei Fische schwimmen der Mitte des Flusses entlang, versetzt gestartet.
+ * Hat jemand am Computer «Bewegung reduzieren» eingestellt, gibt es keine Fische.
+ */
+function addFish(svg, defs, xs, river, { small }) {
+  if (reducedMotion()) return;
+  defs.append('path').attr('id', `${river.id}-path`).attr('d', d3.line().x((p) => p).y(river.cy).curve(d3.curveBasis)(xs));
+  const duration = small ? 16 : 26;
+  [0, 0.36, 0.71].forEach((offset, k) => {
+    svg.append('path').attr('class', 'hero-fish').attr('d', FISH_PATH).attr('transform', `scale(${k === 1 ? 0.8 : 1})`)
+      .append('animateMotion').attr('dur', `${duration}s`).attr('repeatCount', 'indefinite').attr('rotate', 'auto')
+      .attr('begin', `-${(offset * duration).toFixed(1)}s`)
+      .append('mpath').attr('href', `#${river.id}-path`);
+  });
+}
+
+/** Die Sonne über dem heissesten Tag, mit der Temperatur daneben */
+function addHottestSun(svg, days, river, { x, width, small }) {
+  const hot = hottestDay(days.filter((r) => r.date.slice(5) <= state.cmp.cutoff));
+  if (!hot) return;
+  const hx = x(dayIndex(hot.date.slice(5)) + 0.5);
+  const right = hx > width - (small ? 150 : 190); // Kein Platz mehr rechts? Dann steht der Text links.
+  const sun = svg.append('g').attr('class', 'hero-sun')
+    .attr('transform', `translate(${hx},${Math.max(13, river.cy(hx) - river.thick / 2 - 22)})`);
+  appendIcon(sun, 'sun', 24);
+  sun.append('text').attr('x', right ? -18 : 18).attr('dy', '0.35em').attr('text-anchor', right ? 'end' : 'start')
+    .text(`Heissester Tag: ${fmtTemp(hot.water_temperature_c)}`);
+}
+
+/** Mit der Maus darüber: Ein Punkt erscheint auf dem Fluss, dazu Datum und Temperatur. */
+function addRiverTooltip(svg, days, river, { x, tooltip, figure }) {
+  const dot = svg.append('circle').attr('class', 'hero-dot').attr('r', 5).style('display', 'none');
+  const byDay = new Map(days.map((r) => [dayIndex(r.date.slice(5)), r]));
+  const hide = () => { tooltip.hide(); dot.style('display', 'none'); };
+  svg.on('pointermove', (event) => {
+    const r = byDay.get(Math.floor(x.invert(d3.pointer(event)[0])));
+    if (!r) { hide(); return; }
+    const px = x(dayIndex(r.date.slice(5)) + 0.5);
+    dot.style('display', null).attr('cx', px).attr('cy', river.cy(px));
+    const box = event.currentTarget.getBoundingClientRect();
+    const fb = figure.getBoundingClientRect();
+    tooltip.show(el('div', {},
+      el('div', { class: 'tooltip__date' }, fmtDateTooltip(parseDate(r.date))),
+      el('div', {}, `${r.river_name}: `, el('strong', {}, fmtTemp(r.water_temperature_c)))),
+    px + box.left - fb.left, box.top - fb.top + river.cy(px) - 40);
+  }).on('pointerleave', hide);
 }
 
 /** Der Satz unter den Flüssen: an wie vielen Tagen über 20 °C, 2026 und 2022 */
@@ -2075,16 +2116,14 @@ function drawSparklines() {
   if (!state.cmp) return;
   document.querySelectorAll('[data-spark]').forEach((node) => {
     const s = state.cmp.stations.find((c) => c.no === node.dataset.spark);
-    node.replaceChildren();
-    const width = node.clientWidth;
-    const height = node.clientHeight;
-    if (!s || width < 40) return;
+    const frame = chartFrame(node, { top: 2, right: 0, bottom: 2, left: 0 }, { minW: 40, minH: 10 });
+    if (!s || !frame) return;
+    const { g: svg, innerW, innerH } = frame;
     const ref = yearPoints(s.ref.records, YEARS.ref, 'WT', 7);
     const cur = yearPoints(s.cur.records, YEARS.cur, 'WT', 7);
-    const x = d3.scaleUtc().domain([new Date(Date.UTC(2000, 0, 1)), new Date(Date.UTC(2000, 11, 31))]).range([0, width]);
-    const y = d3.scaleLinear().domain([0, 28]).range([height - 2, 2]);
+    const x = d3.scaleUtc().domain([YEAR_START, new Date(Date.UTC(2000, 11, 31))]).range([0, innerW]);
+    const y = d3.scaleLinear().domain([0, 28]).range([innerH, 0]);
     const line = valueLine(x, y).curve(d3.curveMonotoneX);
-    const svg = d3.select(node).append('svg').attr('width', width).attr('height', height);
     svg.append('path').attr('d', line(ref)).attr('fill', 'none').attr('stroke', 'var(--year-ref)').attr('stroke-width', 1.25);
     svg.append('path').attr('d', line(cur)).attr('fill', 'none').attr('stroke', colorOf(s.no)).attr('stroke-width', 2);
     finishChart(node);
@@ -2391,13 +2430,7 @@ function toSeries(records, parameter) {
 function renderTimeseries() {
   const ts = state.ts;
   const info = PARAM_INFO[ts.parameter];
-  document.getElementById('ts-title').textContent = `${info.label}, ${ts.parameter === 'N' ? 'Summe pro Tag' : 'Tagesmittel'}`;
-  document.getElementById('ts-unit').textContent = info.axis;
-  document.getElementById('ts-note').textContent = {
-    W: 'Wasserstände liegen je nach Ort auf ganz unterschiedlicher Höhe. Die Grafik zeigt deshalb, wie viele Zentimeter ein Fluss über oder unter seinem eigenen mittleren Pegel seit 2020 stand.',
-    WT: 'Tagesmittel der Wassertemperatur. Gestrichelte Linie: 20 °C.',
-    N: 'Regen pro Tag an der Wetterstation von MeteoSchweiz im Gebiet des Flusses. Für lange Zeiträume eignet sich die Grafik «Regen und Pegel» weiter oben besser.',
-  }[ts.parameter];
+  setTimeseriesTexts(ts.parameter, info);
 
   const chart = document.getElementById('ts-chart');
   if (!ts.records || !ts.records.length) return;
@@ -2411,61 +2444,75 @@ function renderTimeseries() {
     return;
   }
 
-  const width = chart.clientWidth;
-  const height = chart.clientHeight;
-  const small = width < 560;
-  const m = { top: 12, right: small ? 8 : 16, bottom: 28, left: small ? 38 : 48 };
-  const innerW = width - m.left - m.right;
-  const innerH = height - m.top - m.bottom;
-  if (innerW < 50 || innerH < 50) return;
+  const small = chart.clientWidth < 560;
+  const frame = chartFrame(chart, { top: 12, right: small ? 8 : 16, bottom: 28, left: small ? 38 : 48 });
+  if (!frame) return;
+  const { svg, g, innerW, innerH, margin } = frame;
+  // Diese Grafik ist für Bildschirmleser beschriftet (die anderen haben eine Tabelle oder einen Text daneben).
+  svg.attr('aria-hidden', null).attr('role', 'img')
+    .attr('aria-label', `${info.label} von ${series.map((s) => displayName(s.no)).join(', ')}, ${longDate(ts.range.from)} bis ${longDate(ts.range.to)}`);
 
+  // x = Datum, y = Wert. Die Achse beginnt immer bei 0. Beim Wasserstand heisst 0: genau durchschnittlich.
   const from = parseDate(ts.range.from);
   const to = parseDate(ts.range.to);
+  const span = d3.utcDay.count(from, to);
   const x = d3.scaleUtc().domain([from, to]).range([0, innerW]);
-  // Die Achse beginnt immer bei 0. Beim Wasserstand heisst 0: genau durchschnittlich.
   const [lo, hi] = d3.extent(allValues);
   const y = d3.scaleLinear().domain([Math.min(0, lo), Math.max(0, hi)]).nice().range([innerH, 0]);
 
-  const svg = d3.select(chart).selectAll('svg').data([null]).join('svg')
-    .attr('width', width).attr('height', height).attr('role', 'img')
-    .attr('aria-label', `${info.label} von ${series.map((s) => displayName(s.no)).join(', ')}, ${longDate(ts.range.from)} bis ${longDate(ts.range.to)}`);
-  svg.selectAll('*').remove();
-  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
-
-  const span = d3.utcDay.count(from, to);
-  const xTicks = Math.max(2, Math.floor(innerW / (small ? 70 : 90)));
+  // Die Daten unten: je nach Zeitraum Tage, Monate oder Jahre.
   g.append('g').attr('class', 'axis axis--x').attr('transform', `translate(0,${innerH})`)
-    .call(d3.axisBottom(x).ticks(xTicks).tickSizeOuter(0).tickFormat(timeTickFormat(span)))
+    .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(innerW / (small ? 70 : 90)))).tickSizeOuter(0).tickFormat(timeTickFormat(span)))
     .call((a) => a.selectAll('.tick line').attr('y2', 4));
-  g.append('g').attr('class', 'axis axis--y')
-    .call(d3.axisLeft(y).ticks(small ? 5 : 7).tickSize(-innerW).tickFormat((v) => (ts.parameter === 'W' ? fmtSigned(v) : fmt0(v))))
-    .call((a) => a.selectAll('.tick text').attr('x', -8));
+  drawValueAxis(g, y, innerW, small ? 5 : 7, (v) => (ts.parameter === 'W' ? fmtSigned(v) : fmt0(v)));
 
+  // Die Null-Linie und je nach Messgrösse eine Hilfslinie.
   g.append('line').attr('class', 'baseline').attr('x1', 0).attr('x2', innerW).attr('y1', y(0)).attr('y2', y(0));
   if (ts.parameter === 'W') {
     g.append('text').attr('class', 'refline-label').attr('x', innerW).attr('y', y(0) - 5).attr('text-anchor', 'end').text('mittlerer Pegel');
   } else if (ts.parameter === 'WT' && hi >= 20) {
-    g.append('line').attr('class', 'refline').attr('x1', 0).attr('x2', innerW).attr('y1', y(20)).attr('y2', y(20));
-    g.append('text').attr('class', 'refline-label').attr('x', 4).attr('y', y(20) - 5).text('20 °C');
+    drawRefLine(g, y, 20, innerW, '20 °C');
   }
 
+  drawSeriesLines(g, series, { x, y, showDots: span <= 31 });
+  attachSeriesTooltip(chart, g, series, { x, y, innerW, innerH, margin, parameter: ts.parameter });
+  applyFocus();
+  finishChart(chart);
+}
+
+/** Titel, Einheit und Erklärung über und unter der Grafik «Selbst nachschauen» */
+function setTimeseriesTexts(parameter, info) {
+  document.getElementById('ts-title').textContent = `${info.label}, ${parameter === 'N' ? 'Summe pro Tag' : 'Tagesmittel'}`;
+  document.getElementById('ts-unit').textContent = info.axis;
+  document.getElementById('ts-note').textContent = {
+    W: 'Wasserstände liegen je nach Ort auf ganz unterschiedlicher Höhe. Die Grafik zeigt deshalb, wie viele Zentimeter ein Fluss über oder unter seinem eigenen mittleren Pegel seit 2020 stand.',
+    WT: 'Tagesmittel der Wassertemperatur. Gestrichelte Linie: 20 °C.',
+    N: 'Regen pro Tag an der Wetterstation von MeteoSchweiz im Gebiet des Flusses. Für lange Zeiträume eignet sich die Grafik «Regen und Pegel» weiter oben besser.',
+  }[parameter];
+}
+
+/** Eine Linie pro Fluss in seiner Farbe. Bei kurzen Zeiträumen zusätzlich jeden Tag als Punkt. */
+function drawSeriesLines(g, series, { x, y, showDots }) {
   const line = valueLine(x, y, 'date');
   const lines = g.append('g');
   for (const s of series) {
     lines.append('path').attr('class', 'series-line').attr('data-station', s.no).style('stroke', colorOf(s.no)).attr('d', line(s.points));
-    if (span <= 31) { // bei kurzen Zeiträumen jeden Tag als Punkt zeigen
+    if (showDots) {
       lines.selectAll(null).data(s.points.filter((p) => p.value != null)).join('circle')
         .attr('class', 'series-dot').attr('r', 3.5).style('fill', colorOf(s.no))
         .attr('cx', (p) => x(p.date)).attr('cy', (p) => y(p.value));
     }
   }
+}
 
+/** Mit der Maus darüber: alle Flüsse an diesem Tag, der wärmste bzw. höchste zuoberst. */
+function attachSeriesTooltip(chart, g, series, { x, y, innerW, innerH, margin, parameter }) {
   const dates = [...new Set(series.flatMap((s) => s.points.filter((p) => p.value != null).map((p) => +p.date)))].sort((a, b) => a - b);
   const byDate = series.map((s) => new Map(s.points.filter((p) => p.value != null).map((p) => [+p.date, p])));
-  const f = { W: fmtCm, WT: fmtTemp, N: fmtMmDay }[ts.parameter];
+  const f = { W: fmtCm, WT: fmtTemp, N: fmtMmDay }[parameter];
 
   attachCrosshair({
-    chart, g, innerW, innerH, margin: m,
+    chart, g, innerW, innerH, margin,
     positions: dates.map((d) => x(d)),
     render(i, hover) {
       const date = dates[i];
@@ -2476,15 +2523,13 @@ function renderTimeseries() {
       return el('div', {},
         el('div', { class: 'tooltip__date' }, fmtDateTooltip(new Date(date))),
         rows.map(({ s, p }) => tooltipRow(
-          [state.names.get(s.no).river_name, el('small', {}, ts.parameter === 'N'
+          [state.names.get(s.no).river_name, el('small', {}, parameter === 'N'
             ? `Regen in ${p.rainStation ?? '–'}`
             : `${state.names.get(s.no).station_name} · ${RELEASE_LABEL[p.release] ?? 'ohne Status'}`)],
           colorOf(s.no), f(p.value))));
     },
     label: (i) => fmtDateLong(new Date(dates[i])),
   });
-  applyFocus();
-  finishChart(chart);
 }
 
 /** Wie das Datum unter der Grafik steht: «3. Juli», «Jul» oder «2024», je nach Zeitraum */
